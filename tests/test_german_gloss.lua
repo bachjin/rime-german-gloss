@@ -57,13 +57,17 @@ local function run_filter(gloss, env, cands)
   return out
 end
 
-local function mock_env(dict_value, name_space)
+local function mock_env(dict_value, name_space, extra)
   return {
     name_space = name_space or "*german_gloss",
     engine = { schema = { config = {
       get_string = function(_, key)
         if dict_value and key == ((name_space or "german_gloss"):gsub("^%*", "")) .. "/dictionary" then
           return dict_value
+        end
+        if extra then
+          local short = key:match("/(.+)$")
+          return extra[short]
         end
         return nil
       end,
@@ -137,6 +141,56 @@ check("missing dict empty", next(env4.gloss_dict) == nil)
 check("missing dict warned", #warnings == 1)
 local out4 = run_filter(gloss, env4, { Candidate("Phrase", "学校", "") })
 check("missing dict passthrough", out4[1].comment == "")
+
+
+-- 7. script normalization with a mocked OpenCC t2s converter
+local T2S = { ["學"] = "学", ["電"] = "电", ["腦"] = "脑", ["銀"] = "银" }
+local opencc_calls = {}
+Opencc = function(name)
+  opencc_calls[#opencc_calls + 1] = name
+  if name ~= "t2s.json" then return nil end  -- librime-lua returns nil when not found
+  return { convert = function(_, text)
+    return (text:gsub("[\192-\255][\128-\191]*", function(ch) return T2S[ch] or ch end))
+  end }
+end
+
+local env5 = mock_env(nil)
+gloss.init(env5)
+check("default opencc config", opencc_calls[1] == "t2s.json" and env5.gloss_conv ~= nil)
+local out5 = run_filter(gloss, env5, {
+  Candidate("Phrase", "學校", "～月"),   -- Traditional output (cangjie5, 漢字 mode)
+  Candidate("Phrase", "電腦", ""),
+  Candidate("Shadow", "学校", "〔學校〕"), -- simplifier output (汉字 mode, tips: all)
+  Candidate("Phrase", "學", ""),         -- miss after normalization
+})
+check("traditional cand hits", out5[1].comment == "～月 die Schule")
+check("traditional cand hits 2", out5[2].comment == " der Computer")
+check("simplified shadow hits", out5[3].comment == "〔學校〕 die Schule")
+check("normalized miss untouched", out5[4].comment == "")
+
+-- traditional keys in the TSV; exact match takes precedence over normalization
+local tmp2 = os.tmpname()
+f = assert(io.open(tmp2, "wb"))
+f:write("銀行\tdie Bank\n學校\tdie Schule (trad)\n学校\tdie Schule\n")
+f:close()
+local env6 = mock_env(tmp2)
+gloss.init(env6)
+os.remove(tmp2)
+check("traditional key aliased", gloss.lookup(env6.gloss_dict, env6.gloss_conv, "银行") == "die Bank")
+check("traditional key exact", gloss.lookup(env6.gloss_dict, env6.gloss_conv, "銀行") == "die Bank")
+check("exact precedence trad", gloss.lookup(env6.gloss_dict, env6.gloss_conv, "學校") == "die Schule (trad)")
+check("existing simplified key kept", gloss.lookup(env6.gloss_dict, env6.gloss_conv, "学校") == "die Schule")
+
+-- opencc_config: none disables; unknown config warns and disables
+local env7 = mock_env(nil, nil, { opencc_config = "none" })
+gloss.init(env7)
+check("opencc none disables", env7.gloss_conv == nil
+  and gloss.lookup(env7.gloss_dict, env7.gloss_conv, "學校") == nil)
+local nwarn = #warnings
+local env8 = mock_env(nil, nil, { opencc_config = "missing.json" })
+gloss.init(env8)
+check("missing opencc config disables", env8.gloss_conv == nil and #warnings == nwarn + 1)
+Opencc = nil
 
 print(string.format("%d/%d checks passed", total - failures, total))
 os.exit(failures == 0 and 0 or 1)

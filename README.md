@@ -8,7 +8,8 @@ xuexiao →  1. 学校  die Schule
 
 ## 行为定义
 
-- 对每个候选按 `cand.text` **精确匹配**查询本地 TSV 词典；不做分词、不做子串匹配。
+- 对每个候选按 `cand.text` **整词匹配**查询本地 TSV 词典；不做分词、不做子串匹配。
+- 简繁通用：先按原文精确匹配；未命中时，用 OpenCC `t2s.json` 将候选文本转为简体后再查。词典键也做同样转换，因此词典用简体或繁体书写均可，一份词典同时服务简体与繁体输出（详见“简繁体与仓颉”）。
 - 命中且原注释为空：`comment = " " .. gloss`。
 - 命中且原注释非空（如 simplifier 的 `〔繁〕`、编码提示等）：保留原注释，追加为 `原注释 .. " " .. gloss`。
 - 未命中：候选原样输出；候选顺序与数量不变。
@@ -60,6 +61,8 @@ powershell -ExecutionPolicy Bypass -File .\install-windows.ps1 -Schema luna_piny
 ./install-linux.sh --schema luna_pinyin --schema double_pinyin_flypy
 ```
 
+仓颉五代用户：`./install-linux.sh --schema cangjie5`（Windows：`-Schema cangjie5`）。
+
 未指定 `--dir` 时，安装到以下**所有已存在**的目录：
 
 | 前端 | 用户目录 |
@@ -100,6 +103,13 @@ patch:
   german_gloss/dictionary: german_gloss/my_zh_de.tsv
 ```
 
+可选：简繁转换配置（默认 `t2s.json`；设为 `none` 关闭简繁通用匹配，恢复纯精确匹配）：
+
+```yaml
+patch:
+  german_gloss/opencc_config: none
+```
+
 配置键前缀为过滤器的 name space：`lua_filter@*german_gloss` 对应 `german_gloss`；若写成 `lua_filter@*german_gloss@de`，则对应 `de/dictionary`。
 
 ### 旧版 librime-lua 兼容写法
@@ -111,6 +121,23 @@ german_gloss = require("german_gloss")
 ```
 
 并将补丁改为 `engine/filters/@next: lua_filter@german_gloss`（无 `*`）。
+
+## 简繁体与仓颉
+
+以 rime-cangjie 的 `cangjie5` 方案为例（其码表为繁体；`engine/filters` 为 `simplifier`、`uniquifier`、`single_char_filter`；`simplifier/tips: all`）。本过滤器以 `@next` 追加在这些 filter 之后，因此看到的是简化转换之后的文本：
+
+| 方案状态 | 候选文本 | 匹配路径 | 结果注释（示意） |
+|---|---|---|---|
+| 漢字（繁体输出） | `學校` | 精确未命中 → `t2s` 得 `学校` → 命中 | `<原编码提示> die Schule` |
+| 汉字（简化输出） | `学校` | 精确命中 | `〔學校〕 die Schule` |
+
+设计取舍：统一归一到**简体**而非繁体，因为繁→简基本是多对一映射，结果确定；简→繁是一对多（如 发→發/髮），反向归一会产生歧义。
+
+条件与限制：
+
+- 需要 librime-lua 提供 `Opencc` 接口，且能在 `<用户目录>/opencc/` 或 `<共享目录>/opencc/` 找到 `t2s.json`。这与 librime simplifier 的查找位置相同，因此若方案的简繁切换可用，该文件通常已存在。任一条件不满足时，过滤器记录警告并退化为纯精确匹配，不影响输入。
+- `t2s` 是字形转换，不处理地区词汇差异（如台湾「軟體」→ `软体`，而非「软件」）。如需要，可改用 OpenCC 的 `tw2sp.json` 等配置，前提是该文件存在于上述目录。
+- 仓颉以单字输入为主；多字词条只有在方案以词组形式给出候选（如 `cangjie5` 的预设词汇或用户造词）时才会命中。单字释义需在词典中单独添加。
 
 ## 重新部署
 
@@ -145,10 +172,10 @@ UTF-8 文本，每行 `中文<TAB>德语释义`：
 lua tests/test_german_gloss.lua
 ```
 
-测试以 mock 对象模拟 librime-lua 的 `Candidate`、`ShadowCandidate`、`rime_api`、`yield`，覆盖：四个词条载入、空注释/已有注释/Shadow 候选/Sentence 候选/未命中、BOM/CRLF/重复键解析、自定义词典路径与 name space、词典缺失时的直通行为。该测试不等价于在真实 Weasel / fcitx5-rime / ibus-rime 中的端到端验证。
+测试以 mock 对象模拟 librime-lua 的 `Candidate`、`ShadowCandidate`、`Opencc`、`rime_api`、`yield`，覆盖：简繁归一（繁体候选、繁体词典键、精确优先、关闭与缺失配置）、四个词条载入、空注释/已有注释/Shadow 候选/Sentence 候选/未命中、BOM/CRLF/重复键解析、自定义词典路径与 name space、词典缺失时的直通行为。该测试不等价于在真实 Weasel / fcitx5-rime / ibus-rime 中的端到端验证。
 
 ## 已知限制
 
-- 仅精确匹配整个候选文本；句子候选（如「学校工作」）不会被拆分查询。
+- 仅匹配整个候选文本（含简繁归一）；句子候选（如「学校工作」）不会被拆分查询。
 - Windows 下用户目录路径含非 ASCII 字符时，Lua `io.open` 依赖 librime 返回的本地编码路径；未在此类环境中验证。
 - 词典在每次过滤器初始化（部署、切换方案、新建会话）时完整载入内存；大词典会相应增加初始化时间与内存占用。
