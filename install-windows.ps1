@@ -78,6 +78,14 @@ if ($modified -and -not $Force) {
   Write-Host '    installed german_gloss\zh_de.tsv'
 }
 
+$baseSrc = Join-Path (Join-Path $SrcDir 'german_gloss') 'handedict.tsv'
+if (Test-Path -LiteralPath $baseSrc) {
+  Copy-Item -LiteralPath $baseSrc -Destination (Join-Path $dictDir 'handedict.tsv') -Force
+  Write-Host '    installed german_gloss\handedict.tsv'
+} else {
+  Write-Host '    no german_gloss\handedict.tsv (run tools\build_handedict.py for the full dictionary)'
+}
+
 foreach ($id in $Schema) {
   $custom = Join-Path $RimeUserDir "$id.custom.yaml"
   if (-not (Test-Path -LiteralPath $custom)) {

@@ -73,6 +73,14 @@ install_into() {
     echo "    installed german_gloss/zh_de.tsv"
   fi
 
+  base_src="$SRC_DIR/german_gloss/handedict.tsv"
+  if [ -f "$base_src" ]; then
+    cp "$base_src" "$dir/german_gloss/handedict.tsv"
+    echo "    installed german_gloss/handedict.tsv"
+  else
+    echo "    no german_gloss/handedict.tsv (run tools/build_handedict.py for the full dictionary)"
+  fi
+
   for schema in $SCHEMAS; do
     custom="$dir/$schema.custom.yaml"
     if [ ! -e "$custom" ]; then

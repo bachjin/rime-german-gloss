@@ -65,6 +65,9 @@ local function mock_env(dict_value, name_space, extra)
         if dict_value and key == ((name_space or "german_gloss"):gsub("^%*", "")) .. "/dictionary" then
           return dict_value
         end
+        if key:match("/base_dictionary$") then
+          return (extra and extra.base_dictionary) or "none"
+        end
         if extra then
           local short = key:match("/(.+)$")
           return extra[short]
@@ -124,6 +127,7 @@ check("malformed ignored", d["kein tab"] == nil)
 check("trimmed", d["银行"] == "die Bank")
 
 -- 4. configured absolute dictionary path
+gloss.clear_cache()
 local env2 = mock_env(tmp, "*german_gloss")
 gloss.init(env2)
 check("absolute dictionary config", env2.gloss_dict["银行"] == "die Bank")
@@ -154,6 +158,7 @@ Opencc = function(name)
   end }
 end
 
+gloss.clear_cache()
 local env5 = mock_env(nil)
 gloss.init(env5)
 check("default opencc config", opencc_calls[1] == "t2s.json" and env5.gloss_conv ~= nil)
@@ -173,6 +178,7 @@ local tmp2 = os.tmpname()
 f = assert(io.open(tmp2, "wb"))
 f:write("銀行\tdie Bank\n學校\tdie Schule (trad)\n学校\tdie Schule\n")
 f:close()
+gloss.clear_cache()
 local env6 = mock_env(tmp2)
 gloss.init(env6)
 os.remove(tmp2)
@@ -191,6 +197,46 @@ local env8 = mock_env(nil, nil, { opencc_config = "missing.json" })
 gloss.init(env8)
 check("missing opencc config disables", env8.gloss_conv == nil and #warnings == nwarn + 1)
 Opencc = nil
+
+-- 8. base dictionary: user entries override it, missing file is silent,
+--    long glosses are truncated, dictionaries are loaded once
+gloss.clear_cache()
+local tmp3 = os.tmpname()
+f = assert(io.open(tmp3, "wb"))
+f:write("学校\tSchule (S, Edu)\n學校\tSchule (S, Edu)\n我\tich (Pron); wir; unsere (Pron); selbst (Pron)\n")
+f:close()
+local env9 = mock_env(nil, nil, { base_dictionary = tmp3, max_length = "12" })
+gloss.init(env9)
+local out9 = run_filter(gloss, env9, {
+  Candidate("Phrase", "学校", ""),   -- in both: user dictionary wins
+  Candidate("Phrase", "學校", ""),   -- base only (no OpenCC here)
+  Candidate("Phrase", "我", ""),     -- base only, truncated
+  Candidate("Phrase", "你", ""),     -- miss
+})
+check("user dict overrides base", out9[1].comment == " die Schule")
+check("base dict hit", out9[2].comment == " Schule (S, E…")
+check("gloss truncated on char boundary", out9[3].comment == " ich (Pron)…")
+check("base miss untouched", out9[4].comment == "")
+os.remove(tmp3)
+local env10 = mock_env(nil, nil, { base_dictionary = tmp3, max_length = "0" })
+gloss.init(env10)
+check("dictionary cached", env10.gloss_base == env9.gloss_base and env10.gloss_base["我"] ~= nil)
+check("max_length 0 unlimited",
+  run_filter(gloss, env10, { Candidate("Phrase", "我", "") })[1].comment
+    == " ich (Pron); wir; unsere (Pron); selbst (Pron)")
+nwarn = #warnings
+gloss.clear_cache()
+local env11 = mock_env(nil, nil, { base_dictionary = tmp3 })
+gloss.init(env11)
+check("missing base dict silent", #warnings == nwarn and next(env11.gloss_base) == nil)
+check("utf8 truncate", gloss.truncate("für Äpfel", 5) == "für Ä…" and gloss.truncate("kurz", 5) == "kurz")
+
+-- a failing lookup passes the candidate through
+local env12 = mock_env(nil)
+gloss.init(env12)
+env12.gloss_conv = { convert = function() error("boom") end }
+check("lookup error passthrough",
+  run_filter(gloss, env12, { Candidate("Phrase", "學", "x") })[1].comment == "x")
 
 print(string.format("%d/%d checks passed", total - failures, total))
 os.exit(failures == 0 and 0 or 1)

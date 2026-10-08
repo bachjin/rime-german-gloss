@@ -22,13 +22,30 @@ xuexiao →  1. 学校  die Schule
 
 ```
 lua/german_gloss.lua        过滤器模块（安装到 <用户目录>/lua/）
-german_gloss/zh_de.tsv      最小测试词典（安装到 <用户目录>/german_gloss/）
+german_gloss/zh_de.tsv      用户词典，初始为 4 条示例（安装到 <用户目录>/german_gloss/）
+german_gloss/handedict.tsv  完整词典，由下面的脚本生成，不纳入版本库
+tools/build_handedict.py    从 HanDeDict 生成 handedict.tsv
 install-windows.ps1         Windows / Weasel 安装脚本
 install-linux.sh            Linux / fcitx5-rime / ibus-rime 安装脚本
 tests/test_german_gloss.lua 离线单元测试（mock librime-lua 对象）
 ```
 
 不修改 librime、Weasel、fcitx5-rime 或 ibus-rime 的任何核心代码，也不需要修改 `rime.lua`。
+
+## 完整词典（HanDeDict）
+
+仓库自带的 `zh_de.tsv` 只有 4 条示例。完整词典来自 [HanDeDict](https://handedict.zydeo.net/)（CC BY-SA 2.0），安装前先生成：
+
+```sh
+python3 tools/build_handedict.py            # 下载并生成 german_gloss/handedict.tsv
+python3 tools/build_handedict.py --source handedict.u8   # 或使用已下载的文件
+```
+
+- 约 26 万个词头（含单字），每个词条同时以繁体和简体词头写出，因此不依赖 OpenCC。
+- 去掉例句（`Bsp.:`）和 `(u.E.)` 标记；同一词头的多个义项以 `; ` 连接，专名（姓氏、地名等）排在最后。
+- 安装脚本发现 `german_gloss/handedict.tsv` 存在时会一并安装（总是覆盖）。
+- 过滤器先查 `zh_de.tsv`，未命中再查 `handedict.tsv`，所以 `zh_de.tsv` 可用来覆盖或补充个别词条。
+- 生成的文件受 CC BY-SA 2.0 约束；再分发时需署名 HanDeDict 并沿用相同许可。
 
 ## 前提条件
 
@@ -110,6 +127,14 @@ patch:
   german_gloss/opencc_config: none
 ```
 
+可选：完整词典路径与释义长度（默认如下；`base_dictionary: none` 不加载完整词典，`max_length: 0` 不截断）：
+
+```yaml
+patch:
+  german_gloss/base_dictionary: german_gloss/handedict.tsv
+  german_gloss/max_length: 60
+```
+
 配置键前缀为过滤器的 name space：`lua_filter@*german_gloss` 对应 `german_gloss`；若写成 `lua_filter@*german_gloss@de`，则对应 `de/dictionary`。
 
 ### 旧版 librime-lua 兼容写法
@@ -135,9 +160,10 @@ german_gloss = require("german_gloss")
 
 条件与限制：
 
-- 需要 librime-lua 提供 `Opencc` 接口，且能在 `<用户目录>/opencc/` 或 `<共享目录>/opencc/` 找到 `t2s.json`。这与 librime simplifier 的查找位置相同，因此若方案的简繁切换可用，该文件通常已存在。任一条件不满足时，过滤器记录警告并退化为纯精确匹配，不影响输入。
+- 简繁归一只作用于 `zh_de.tsv`；`handedict.tsv` 自带繁简两种词头，不需要它。
+- 需要 librime-lua 提供 `Opencc` 接口，且能在 `<用户目录>/opencc/` 或 `<共享目录>/opencc/` 找到 `t2s.json`（不要传绝对路径：librime-lua 1.17 的 `Opencc` 在这种情况下会崩溃）。任一条件不满足时，过滤器记录警告并退化为纯精确匹配，不影响输入。
 - `t2s` 是字形转换，不处理地区词汇差异（如台湾「軟體」→ `软体`，而非「软件」）。如需要，可改用 OpenCC 的 `tw2sp.json` 等配置，前提是该文件存在于上述目录。
-- 仓颉以单字输入为主；多字词条只有在方案以词组形式给出候选（如 `cangjie5` 的预设词汇或用户造词）时才会命中。单字释义需在词典中单独添加。
+- 仓颉以单字输入为主；多字词条只有在方案以词组形式给出候选（如 `cangjie5` 的预设词汇或用户造词）时才会命中。单字释义由完整词典提供。
 
 ## 重新部署
 
@@ -166,7 +192,7 @@ UTF-8 文本，每行 `中文<TAB>德语释义`：
 
 ## 测试
 
-需要本地 Lua 解释器（已在 Lua 5.1 与 5.4 下验证）：
+需要本地 Lua 解释器（已在 Lua 5.1、5.4 与 5.5 下验证）：
 
 ```sh
 lua tests/test_german_gloss.lua
@@ -178,4 +204,4 @@ lua tests/test_german_gloss.lua
 
 - 仅匹配整个候选文本（含简繁归一）；句子候选（如「学校工作」）不会被拆分查询。
 - Windows 下用户目录路径含非 ASCII 字符时，Lua `io.open` 依赖 librime 返回的本地编码路径；未在此类环境中验证。
-- 词典在每次过滤器初始化（部署、切换方案、新建会话）时完整载入内存；大词典会相应增加初始化时间与内存占用。
+- 词典在首次使用时完整载入内存，之后各会话与方案共用，重新部署后重新载入；完整词典约 12 MB，首次载入会有短暂停顿。
