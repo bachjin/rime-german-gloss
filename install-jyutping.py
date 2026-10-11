@@ -19,7 +19,17 @@ frontends. This script installs it for stock librime with librime-lua:
 
 3. Gloss: installs lua/typeduck_gloss.lua in place of the dropped filter and
    builds its index from jyut6ping3_scolar.dict.yaml, so candidates show
-   TypeDuck's English (Hindi, Urdu, Nepali, Indonesian) definitions.
+   TypeDuck's English (Hindi, Urdu, Nepali, Indonesian) definitions. A second
+   index, built from jyut6ping3.dict.yaml, lists the pronunciations of every
+   entry by frequency; the filter shows them on reverse-lookup candidates
+   (`p Mandarin, `c Cangjie, ...), which would otherwise carry no Jyutping.
+
+4. Reverse lookup (--flypy only): the schema's Mandarin lookup, prefix `p, is
+   typed in full Pinyin. With --flypy it is typed in 小鶴雙拼 instead: the
+   script installs jyut6ping3_flypy.schema.yaml, a helper schema that only
+   compiles a Flypy prism for the luna_pinyin dictionary, and points the
+   lookup at it. That also keeps the lookup independent of luna_pinyin.schema,
+   whose prism is missing when a luna_pinyin.custom.yaml renames its dictionary.
 
 The schema is not added to default.custom.yaml; the script prints the line to
 add. Rerun after TypeDuck updates its schema. Redeploy Rime afterwards.
@@ -43,6 +53,8 @@ SCHEMA = "jyut6ping3"
 FILTER = "lua_filter@*typeduck_gloss"
 ESSAY = "typeduck_essay"
 INDEX = "lua/typeduck_gloss.txt"
+READINGS = "lua/typeduck_readings.txt"
+FLYPY = SCHEMA + "_flypy"
 
 # Copied unchanged. Everything else in the source is either generated below,
 # mobile-only, or would shadow a stock file of the same name.
@@ -129,6 +141,94 @@ def patch_schema(text):
     return "\n".join(out)
 
 
+def patch_flypy(text):
+    """Make the Mandarin reverse lookup of jyut6ping3.schema.yaml take 小鶴雙拼.
+
+    The FLYPY schema replaces luna_pinyin as a dependency and provides the
+    prism; the Pinyin `preedit_format:` goes, as it would rewrite the codes.
+    """
+    out, section, skipping = [], None, False
+    depends = prism = False
+    for line in text.split("\n"):
+        if line and not line[0].isspace() and not line.startswith("#"):
+            section = line.split(":")[0]
+        if skipping:
+            if line.lstrip().startswith("- "):
+                continue
+            skipping = False
+        if section == "schema" and line.strip() == "- luna_pinyin":
+            line = line.replace("luna_pinyin", FLYPY)
+            depends = True
+        elif section == "luna_pinyin":
+            key = line.strip().split(":")[0]
+            if key == "preedit_format":
+                skipping = True
+                continue
+            if key == "tips":
+                line = line.split(":")[0] + ": 〔普通話·小鶴〕"
+            elif key == "dictionary":
+                out.append(line)
+                line = line.split("dictionary:")[0] + "prism: " + FLYPY
+                prism = True
+        out.append(line)
+    if not depends:
+        raise ValueError("jyut6ping3.schema.yaml: no '- luna_pinyin' in schema/dependencies")
+    if not prism:
+        raise ValueError("jyut6ping3.schema.yaml: no 'dictionary:' in the luna_pinyin section")
+    return "\n".join(out)
+
+
+# 小鶴雙拼 spelling algebra of rime-double-pinyin's double_pinyin_flypy.
+FLYPY_SCHEMA = r"""
+schema:
+  schema_id: %s
+  name: 小鶴雙拼（粵拼反查）
+  version: "1"
+  description: |
+    Compiles the 小鶴雙拼 prism for the Mandarin reverse lookup of jyut6ping3.
+    Not meant for the schema list.
+
+speller:
+  alphabet: zyxwvutsrqponmlkjihgfedcba
+  delimiter: " '"
+  algebra:
+    - erase/^xx$/
+    - derive/^([jqxy])u$/$1v/
+    - derive/^([aoe])([ioun])$/$1$1$2/
+    - xform/^([aoe])(ng)?$/$1$1$2/
+    - xform/iu$/Q/
+    - xform/(.)ei$/$1W/
+    - xform/uan$/R/
+    - xform/[uv]e$/T/
+    - xform/un$/Y/
+    - xform/^sh/U/
+    - xform/^ch/I/
+    - xform/^zh/V/
+    - xform/uo$/O/
+    - xform/ie$/P/
+    - xform/i?ong$/S/
+    - xform/(ing|uai)$/K/
+    - xform/(.)ai$/$1D/
+    - xform/(.)en$/$1F/
+    - xform/(.)eng$/$1G/
+    - xform/[iu]ang$/L/
+    - xform/(.)ang$/$1H/
+    - xform/ian$/M/
+    - xform/(.)an$/$1J/
+    - xform/(.)ou$/$1Z/
+    - xform/[iu]a$/X/
+    - xform/iao$/N/
+    - xform/(.)ao$/$1C/
+    - xform/ui$/V/
+    - xform/in$/B/
+    - xlit/QWRTYUIOPSDFGHJKLZXCVBNM/qwrtyuiopsdfghjklzxcvbnm/
+
+translator:
+  dictionary: luna_pinyin
+  prism: %s
+""" % (FLYPY, FLYPY)
+
+
 def patch_dict(text):
     """Make the dictionary take its preset vocabulary from typeduck_essay.txt."""
     lines = text.split("\n")
@@ -168,6 +268,38 @@ def build_index(lines):
         groups.setdefault(text, []).append(US.join([col(COL_JYUTPING), col(COL_POS)] + glosses))
         count += 1
     return [text + "\t" + RS.join(records) for text, records in groups.items()], count
+
+
+def build_readings(lines):
+    """Turn jyut6ping3.dict.yaml lines into (index lines, entry count).
+
+    Each entry is `<text>\\t<jyutping>\\t<weight>%`. The pronunciations of a
+    text are listed by descending weight; those of weight 0 are dropped unless
+    the text has no other.
+    """
+    groups = {}
+    body = False
+    for line in lines:
+        line = line.rstrip("\r\n")
+        if not body:
+            body = line.strip() == "..."
+            continue
+        fields = line.split("\t")
+        if len(fields) < 2 or not fields[0] or not fields[1] or line.startswith("#"):
+            continue
+        try:
+            weight = float(fields[2].rstrip("%")) if len(fields) > 2 else 0.0
+        except ValueError:
+            weight = 0.0
+        readings = groups.setdefault(fields[0], [])
+        if fields[1] not in [r for r, _ in readings]:
+            readings.append((fields[1], weight))
+    index = []
+    for text, readings in groups.items():
+        ranked = sorted(readings, key=lambda r: -r[1])  # stable: file order between equals
+        used = [r for r, w in ranked if w > 0] or [r for r, _ in ranked]
+        index.append(text + "\t" + US.join(used))
+    return index, len(index)
 
 
 # ---- installation ----------------------------------------------------------
@@ -261,7 +393,7 @@ class Installer:
         print("    installed %s" % name)
 
 
-def install(user_dir, source, origin, languages, spelling_hints, force):
+def install(user_dir, source, origin, languages, spelling_hints, force, flypy=False):
     """Install into one user directory; returns the names of files left alone."""
     inst = Installer(user_dir, force)
     header = "%s from %s\n" % (MARKER, origin)
@@ -277,7 +409,11 @@ def install(user_dir, source, origin, languages, spelling_hints, force):
         return (source / name).read_text(encoding="utf-8")
 
     inst.write("template.yaml", header + patch_template(read("template.yaml"), languages, spelling_hints))
-    inst.write(SCHEMA + ".schema.yaml", header + patch_schema(read(SCHEMA + ".schema.yaml")))
+    schema = patch_schema(read(SCHEMA + ".schema.yaml"))
+    if flypy:
+        schema = patch_flypy(schema)
+        inst.write(FLYPY + ".schema.yaml", header + FLYPY_SCHEMA)
+    inst.write(SCHEMA + ".schema.yaml", header + schema)
     inst.write(SCHEMA + ".dict.yaml", header + patch_dict(read(SCHEMA + ".dict.yaml")))
 
     (user_dir / "lua").mkdir(exist_ok=True)
@@ -289,6 +425,10 @@ def install(user_dir, source, origin, languages, spelling_hints, force):
         index, count = build_index(fh)
     (user_dir / INDEX).write_text("\n".join(index) + "\n", encoding="utf-8", newline="\n")
     print("    built %s: %d texts, %d glosses" % (INDEX, len(index), count))
+    with open(user_dir / (SCHEMA + ".dict.yaml"), encoding="utf-8") as fh:
+        index, count = build_readings(fh)
+    (user_dir / READINGS).write_text("\n".join(index) + "\n", encoding="utf-8", newline="\n")
+    print("    built %s: %d texts" % (READINGS, count))
 
     default = user_dir / "default.custom.yaml"
     if not (default.exists() and SCHEMA in default.read_text(encoding="utf-8")):
@@ -307,6 +447,8 @@ def main(argv=None):
                         help="gloss languages, comma-separated, from: %s (default: eng)" % " ".join(LANGUAGES))
     parser.add_argument("--spelling-hints", type=int, default=10, metavar="N",
                         help="show Jyutping for candidates of up to N syllables; 0 disables (default: 10)")
+    parser.add_argument("--flypy", action="store_true",
+                        help="type the Mandarin reverse lookup (`p) in 小鶴雙拼 instead of full Pinyin")
     parser.add_argument("--force", action="store_true",
                         help="overwrite files in the user directory this script did not install")
     args = parser.parse_args(argv)
@@ -340,7 +482,7 @@ def main(argv=None):
         for d in dirs:
             print("==> %s" % d)
             try:
-                kept += install(d, source, origin, languages, args.spelling_hints, args.force)
+                kept += install(d, source, origin, languages, args.spelling_hints, args.force, args.flypy)
             except ValueError as error:
                 sys.exit("%s\nThe upstream schema has changed; this script needs updating." % error)
 
