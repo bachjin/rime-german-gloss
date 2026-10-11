@@ -30,18 +30,26 @@
 -- the record exactly. Without it the comment is empty and the typed code is
 -- used instead, which may lack tones; the match then ignores tones and can
 -- pick the wrong sense of a character such as 行 (hong2 bank / hong4 row).
+--
+-- Reverse lookups (`p Mandarin, `c Cangjie, ...): the candidates of these
+-- segments carry no Jyutping, so the filter adds it from a second index,
+-- lua/typeduck_readings.txt:   <text> \t <jyutping> ( \31 <jyutping> )*
+-- with the most frequent pronunciation first, which also selects the record.
 
 local M = {}
 
 local INDEX = "lua/typeduck_gloss.txt"
+local READINGS = "lua/typeduck_readings.txt"
+local READING_SEPARATOR = ", "
 local US, RS = "\31", "\30"
 local FIELD = { jyutping = 1, pos = 2, eng = 3, hin = 4, urd = 5, nep = 6, ind = 7 }
 local DEFAULT_LANGUAGES = { "eng" }
 local DEFAULT_SEPARATOR = " / "
 local DEFAULT_MAX_LENGTH = 60
 
--- Loaded index, shared by every session and schema of this Lua state.
+-- Loaded indexes, shared by every session and schema of this Lua state.
 local cache = nil
+local readings_cache = nil
 
 local function log_warn(msg)
   if log and log.warning then
@@ -79,7 +87,7 @@ function M.load_index(path)
   return index
 end
 
-local function find_index()
+local function find_index(name, optional)
   local dirs = {}
   if rime_api then
     if rime_api.get_user_data_dir then
@@ -90,18 +98,21 @@ local function find_index()
     end
   end
   for _, dir in ipairs(dirs) do
-    local ok, index = pcall(M.load_index, dir .. "/" .. INDEX)
+    local ok, index = pcall(M.load_index, dir .. "/" .. name)
     if ok and index then
       return index
     end
   end
-  log_warn("index not found: " .. INDEX .. " (run install-jyutping.py)")
+  if not optional then
+    log_warn("index not found: " .. name .. " (run install-jyutping.py)")
+  end
   return {}
 end
 
--- Forget the cached index (it is otherwise kept until Rime is redeployed).
+-- Forget the cached indexes (they are otherwise kept until Rime is redeployed).
 function M.clear_cache()
   cache = nil
+  readings_cache = nil
 end
 
 -- Drop syllable delimiters so "hoeng1 gong2" compares equal to "hoeng1gong2".
@@ -175,22 +186,31 @@ end
 -- Return the comment to show for `cand`, or nil to leave it untouched.
 function M.comment_for(cand, env)
   local packed = env.index[cand.text]
-  if not packed then
-    return nil
-  end
   local comment = cand.comment or ""
-  local key = M.normalize(comment)
-  if key == "" then
+  local shown, key = comment, M.normalize(comment)
+  if env.lookup then
+    -- The comment and the typed code belong to the lookup, not to Cantonese.
+    local readings = env.readings[cand.text]
+    key = ""
+    if readings then
+      local list = M.split(readings, US)
+      key = M.normalize(list[1])
+      shown = table.concat(list, READING_SEPARATOR)
+      if comment ~= "" then
+        shown = comment .. "  " .. shown
+      end
+    end
+  elseif key == "" then
     key = M.normalize(cand.preedit)
   end
-  local gloss = M.build_gloss(M.pick_record(packed, key), env)
+  local gloss = packed and M.build_gloss(M.pick_record(packed, key), env)
   if not gloss then
-    return nil
+    return shown ~= comment and shown or nil
   end
-  if comment == "" then
+  if shown == "" then
     return gloss
   end
-  return comment .. "  " .. gloss
+  return shown .. "  " .. gloss
 end
 
 function M.init(env)
@@ -221,9 +241,21 @@ function M.init(env)
   env.max_length = env.max_length or DEFAULT_MAX_LENGTH
 
   if cache == nil then
-    cache = find_index()
+    cache = find_index(INDEX)
   end
   env.index = cache
+  if readings_cache == nil then
+    readings_cache = find_index(READINGS, true)
+  end
+  env.readings = readings_cache
+end
+
+-- Called by librime-lua with the segment about to be filtered. The schema's
+-- own translator tags its segments "abc"; every other tag is a reverse lookup.
+function M.tags_match(segment, env)
+  local ok, abc = pcall(function() return segment:has_tag("abc") end)
+  env.lookup = ok and not abc
+  return true
 end
 
 function M.func(input, env)

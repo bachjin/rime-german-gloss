@@ -22,6 +22,10 @@ f:write("唔該\t" .. record("m4goi1", "", "thank you", "", "", "", "terima kasi
 f:write("印\t" .. record("jan3", "n", "", "छाप", "", "", "") .. "\n")
 f:write("no tab on this line\n")
 f:close()
+f = assert(io.open(dir .. "/lua/typeduck_readings.txt", "wb"))
+f:write("行\thong4" .. US .. "haang4\n")
+f:write("杭\thong4\n")
+f:close()
 
 -- ---- mocks ---------------------------------------------------------------
 local function Candidate(text, comment, preedit)
@@ -159,7 +163,33 @@ check("normalize", gloss.normalize("hoeng1 gong2") == "hoeng1gong2" and gloss.no
 check("split keeps empty fields", #gloss.split("a" .. US .. US .. "c", US) == 3)
 check("pick_record single", gloss.pick_record(record("x1", "n", "only"), "y2")[3] == "only")
 
--- 6. missing index: warn once per load, pass candidates through
+-- 6. reverse-lookup segments: Jyutping comes from the readings index
+local function Segment(...)
+  local tags = {}
+  for _, tag in ipairs({ ... }) do tags[tag] = true end
+  return { has_tag = function(_, tag) return tags[tag] == true end }
+end
+check("tags_match applies to every segment", gloss.tags_match(Segment("luna_pinyin"), env) == true)
+check("segment without abc is a lookup", env.lookup == true)
+out = run_filter(gloss, env, {
+  Candidate("行", "", "hh"),          -- typed code is not Jyutping: first reading picks the record
+  Candidate("行", "～金"),            -- comment of the lookup is kept in front
+  Candidate("杭", ""),                -- readings, no gloss
+  Candidate("唔該", ""),              -- gloss, no readings
+  Candidate("香", ""),                -- neither
+})
+check("lookup shows readings and their gloss", out[1].comment == "hong4, haang4  row, profession")
+check("lookup keeps its own comment", out[2].comment == "～金  hong4, haang4  row, profession")
+check("lookup readings without gloss", out[3].shadow and out[3].comment == "hong4")
+check("lookup gloss without readings", out[4].comment == "thank you")
+check("lookup miss untouched", out[5].shadow == nil)
+gloss.tags_match(Segment("abc"), env)
+out = run_filter(gloss, env, { Candidate("行", "hong2") })
+check("abc segment is not a lookup", env.lookup == false and out[1].comment == "hong2  bank")
+gloss.tags_match({}, env)
+check("segment without has_tag is not a lookup", env.lookup == false)
+
+-- 7. missing index: warn once per load, pass candidates through
 os.remove(index_path)
 gloss.clear_cache()
 local env6 = mock_env()
