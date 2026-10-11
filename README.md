@@ -6,6 +6,7 @@
 |---|---|---|
 | [德语释义](#德语释义) | 在候选词注释里追加离线中德词典的德语释义，任何方案可用 | `install-linux.sh` / `install-windows.ps1` |
 | [仓颉增强](#仓颉增强) | `cangjie5`：分号分隔全码输入；重码首选按仓颉次序而不是字频 | `install-cangjie.py` |
+| [粤拼（TypeDuck）](#粤拼typeduck) | 在原版 librime 上安装 TypeDuck 的 `jyut6ping3` 方案；候选词显示带声调的粤拼和英语等释义 | `install-jyutping.py` |
 
 仓库名 `rime-german-gloss` 来自最早的那个定制。
 
@@ -20,6 +21,8 @@ install-windows.ps1           德语释义：Windows / Weasel 安装脚本
 install-linux.sh              德语释义：Linux / fcitx5-rime / ibus-rime 安装脚本
 lua/delimited_code.lua        仓颉增强：分隔符分段器（安装到 <用户目录>/lua/）
 install-cangjie.py            仓颉增强：安装分段器，并生成修正重码次序的词库
+lua/typeduck_gloss.lua        粤拼：释义过滤器模块（安装到 <用户目录>/lua/）
+install-jyutping.py           粤拼：安装 TypeDuck 方案、改写配置，并生成释义索引
 tests/                        各部分的离线单元测试
 ```
 
@@ -89,6 +92,65 @@ python3 tests/test_install_cangjie.py
 ```
 
 两者都是离线单元测试（分段器用 mock 的 `Segmentation`）。真实行为另用 librime 的 C API 在临时用户目录里模拟按键验证过（librime 1.17、librime-lua、Linux），该验证脚本不在仓库里。
+
+## 粤拼（TypeDuck）
+
+把 [TypeDuck 的方案仓库](https://github.com/TypeDuck-HK/schema)（`jyut6ping3`，粤语拼音）装到原版 librime + librime-lua 上。
+
+```
+hoenggong →  1. 香港  hoeng1 gong2  (n) Hong Kong
+hong4     →  1. 行    hong4  (mw) row, profession
+hong2     →     行    hong2  (n) bank
+```
+
+```sh
+python3 install-jyutping.py                     # 从 GitHub 克隆上游（需要 git 和网络）
+python3 install-jyutping.py --source ~/schema   # 用已有的上游检出
+```
+
+未指定 `--dir` 时安装到所有已存在的用户目录，目录检测与 `install-cangjie.py` 相同。只需要 Python 3。装完后在 `default.custom.yaml` 的 `schema_list` 里加上 `- schema: jyut6ping3`（脚本不改这个文件，只会提示），再[重新部署](#重新部署)；首次部署要编译几个词库，约一分钟。
+
+上游仓库是给 TypeDuck 自己的 librime 分支和前端写的，直接拷进用户目录会出问题，脚本做了三件事：
+
+**1. 只拷不会遮蔽 rime-data 的文件。** 上游带有自己的 `luna_pinyin`、`cangjie5`、`stroke`、`essay.txt`、`default.yaml`，放进用户目录会盖掉共享目录里的同名文件，连带改掉其他方案（`luna_pinyin_simp` 用的方案和词库会换成上游为反查准备的那份，预设词汇从 44 万行变成 14 万行）。这些文件一律不拷，方案里的反查改用共享目录里的原版。TypeDuck 的词频表改名为 `typeduck_essay.txt`，在 `jyut6ping3.dict.yaml` 里用 `vocabulary: typeduck_essay` 指过去。`jyut6ping3_mobile*` 等手机专用方案也不拷。
+
+**2. 改写 `template.yaml` 和 `jyut6ping3.schema.yaml`。**
+
+- 去掉 `dictionary_lookup_filter`：它是 TypeDuck 的 librime 插件，依赖其 librime 分支里才有的接口（对上游 1.17.0 编译不过），而且输出的是给 TypeDuck 前端解析的分隔字符串，别的前端会原样显示。
+- 去掉注释里的 `\f` / `\v` 标记，理由同上。
+- 加上 `translator/spelling_hints: 10`，让 librime 自己在注释里给出带声调的粤拼。
+
+这两个文件是直接改的，没有用 `jyut6ping3.custom.yaml`：这个方案的根节点有 `__include: template:/`，实测 custom 补丁不会被套用。
+
+**3. 用 `lua/typeduck_gloss.lua` 顶替被去掉的过滤器。** 脚本从 `jyut6ping3_scolar.dict.yaml` 生成索引 `lua/typeduck_gloss.txt`（约 8 万个词、4 MB），过滤器按候选文本查释义，接在粤拼后面。多音字按注释里的粤拼选义项，所以依赖上一条的 `spelling_hints`；关掉它时退回用输入码匹配，输入不带声调就可能选错（「行」的 hong2 / hong4）。过滤器必须排在 `simplifier` 之前，索引的键是繁体。
+
+选项：
+
+| 选项 | 作用 |
+|---|---|
+| `--languages eng,hin` | 显示哪些语言的释义，可选 `eng` `hin` `urd` `nep` `ind`，默认 `eng` |
+| `--spelling-hints N` | 不超过 N 个音节的候选显示粤拼，`0` 关闭，默认 `10` |
+| `--force` | 覆盖用户目录里不是本脚本装的同名文件 |
+
+释义的其余设置在生成的 `template.yaml` 里（`typeduck_gloss:` 一节：`show_pos`、`separator`、`max_length`），重跑脚本会被写回默认值。
+
+脚本生成的三个文件（`template.yaml`、`jyut6ping3.schema.yaml`、`jyut6ping3.dict.yaml`）首行带标记，重跑时直接更新；原样拷贝的文件内容相同就跳过。用户目录里已有内容不同、又不是本脚本生成的同名文件时保留原文件并列出，`--force` 才覆盖——上游更新后重跑，原样拷贝的词库也属于这种情况，要加 `--force`。
+
+### 测试（粤拼）
+
+```sh
+lua tests/test_typeduck_gloss.lua
+python3 tests/test_install_jyutping.py
+```
+
+都是离线单元测试（过滤器用 mock 的候选和配置对象，安装脚本用临时目录里的假上游）。真实行为另在 fcitx5-rime（librime 1.17、Lua 5.5、Linux）上验证过：用上游 2026-09-04 的版本跑安装脚本、重新部署，再通过 fcitx5 的 D-Bus 接口模拟按键，核对上面三个例子的候选和注释；该验证脚本不在仓库里。Windows 未实测。
+
+### 已知限制（粤拼）
+
+- 释义只覆盖 `jyut6ping3_scolar` 里有释义的词；组句得到的候选只有粤拼。
+- 超过 `spelling_hints` 音节数的候选不显示粤拼，多音字释义也随之退回按输入码匹配。
+- 索引在首次使用时整个读进内存，重新部署后重新读取。
+- 上游改了 `template.yaml` 的结构（找不到 `dictionary_lookup_filter` 或 `translator:`）时脚本会报错退出，而不是装出一个半改的方案。
 
 ## 德语释义
 
@@ -283,5 +345,7 @@ lua tests/test_german_gloss.lua
 - **ibus-rime**：ibus 输入法菜单 →「部署」（Deploy）；或 `ibus restart`。
 
 验证德语释义：输入 `xuexiao`（全拼）或 `xtxn`（小鹤双拼），候选「学校」后应显示 `die Schule`。
+
+验证粤拼：切到「粵語拼音」方案输入 `hoenggong`，候选「香港」后应显示 `hoeng1 gong2  (n) Hong Kong`。
 
 验证仓颉增强：`vmpi;dl` 出 约束；没打过 欠 的情况下 `no` 首选是 欠。
