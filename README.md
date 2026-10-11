@@ -119,6 +119,7 @@ python3 install-jyutping.py --source ~/schema   # 用已有的上游检出
 - 去掉 `dictionary_lookup_filter`：它是 TypeDuck 的 librime 插件，依赖其 librime 分支里才有的接口（对上游 1.17.0 编译不过），而且输出的是给 TypeDuck 前端解析的分隔字符串，别的前端会原样显示。
 - 去掉注释里的 `\f` / `\v` 标记，理由同上。
 - 加上 `translator/spelling_hints: 10`，让 librime 自己在注释里给出带声调的粤拼。
+- 把兜底的识别模式 `reverse_lookup`（`` ` `` 后面跟任意字母）改名为 `zz_reverse_lookup`。librime 按名字的字母序逐个试 `recognizer/patterns`，第一个匹配的就算数，`reverse_lookup` 排在 `stroke` 前面，于是 `` `b `` 开头的输入被它截走，笔画反查永远没有候选；改名后它排在最后（`` `bhs `` → 十）。
 
 这两个文件是直接改的，没有用 `jyut6ping3.custom.yaml`：这个方案的根节点有 `__include: template:/`，实测 custom 补丁不会被套用。
 

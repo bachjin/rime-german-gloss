@@ -13,8 +13,9 @@ frontends. This script installs it for stock librime with librime-lua:
 
 2. Schema: drops `dictionary_lookup_filter` (only in TypeDuck's librime fork)
    and the \\f / \\v comment markers (only parsed by TypeDuck's frontends),
-   and turns on `spelling_hints` so every candidate shows its Jyutping with
-   tones. The files are edited directly: the schema starts with a root-level
+   turns on `spelling_hints` so every candidate shows its Jyutping with
+   tones, and renames the catch-all recognizer pattern `reverse_lookup` so it
+   no longer shadows the stroke lookup (`b). The files are edited directly: the schema starts with a root-level
    `__include`, and a jyut6ping3.custom.yaml is not applied to it.
 
 3. Gloss: installs lua/typeduck_gloss.lua in place of the dropped filter and
@@ -55,6 +56,9 @@ ESSAY = "typeduck_essay"
 INDEX = "lua/typeduck_gloss.txt"
 READINGS = "lua/typeduck_readings.txt"
 FLYPY = SCHEMA + "_flypy"
+# New name of the schema's catch-all recognizer pattern "reverse_lookup"; see
+# patch_schema().
+LOOKUP_TAG = "zz_reverse_lookup"
 
 # Copied unchanged. Everything else in the source is either generated below,
 # mobile-only, or would shadow a stock file of the same name.
@@ -126,18 +130,38 @@ def patch_template(text, languages, spelling_hints):
 
 
 def patch_schema(text):
-    r"""Remove the \v comment markers from jyut6ping3.schema.yaml.
+    r"""Adapt jyut6ping3.schema.yaml to stock librime and other frontends.
 
-    A `comment_format:` left without items is removed with them.
+    Removes the \v comment markers; a `comment_format:` left without items is
+    removed with them.
+
+    Renames the catch-all recognizer pattern `reverse_lookup` ("`" followed by
+    anything) to LOOKUP_TAG. librime tries the patterns in the order of their
+    names and takes the first that matches, so the catch-all shadows every
+    lookup named after it: "`b..." was tagged reverse_lookup instead of stroke
+    and the stroke lookup never produced a candidate. The new name sorts last.
     """
     lines = [line for line in text.split("\n") if not marker_line(line, "v")]
-    out = []
+    out, section = [], None
+    tagged = pattern = False
     for i, line in enumerate(lines):
+        if line and not line[0].isspace() and not line.startswith("#"):
+            section = line.split(":")[0]
         if line.strip() == "comment_format:":
             rest = [l for l in lines[i + 1:] if l.strip()]
             if not rest or not rest[0].lstrip().startswith("- "):
                 continue
+        if section == "reverse_lookup" and line.strip() == "tag: reverse_lookup":
+            line = line.replace("reverse_lookup", LOOKUP_TAG)
+            tagged = True
+        elif section == "recognizer" and line.strip().startswith("reverse_lookup:"):
+            line = line.replace("reverse_lookup", LOOKUP_TAG, 1)
+            pattern = True
         out.append(line)
+    if not tagged:
+        raise ValueError("jyut6ping3.schema.yaml: no 'tag: reverse_lookup' in the reverse_lookup section")
+    if not pattern:
+        raise ValueError("jyut6ping3.schema.yaml: no 'reverse_lookup' pattern in recognizer/patterns")
     return "\n".join(out)
 
 
