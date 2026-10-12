@@ -110,7 +110,7 @@ python3 install-jyutping.py --source ~/schema   # 用已有的上游检出
 
 未指定 `--dir` 时安装到所有已存在的用户目录，目录检测与 `install-cangjie.py` 相同。只需要 Python 3。装完后在 `default.custom.yaml` 的 `schema_list` 里加上 `- schema: jyut6ping3`（脚本不改这个文件，只会提示），再[重新部署](#重新部署)；首次部署要编译几个词库，约一分钟。
 
-上游仓库是给 TypeDuck 自己的 librime 分支和前端写的，直接拷进用户目录会出问题，脚本做了四件事：
+上游仓库是给 TypeDuck 自己的 librime 分支和前端写的，直接拷进用户目录会出问题，脚本做了五件事：
 
 **1. 只拷不会遮蔽 rime-data 的文件。** 上游带有自己的 `luna_pinyin`、`cangjie5`、`stroke`、`essay.txt`、`default.yaml`，放进用户目录会盖掉共享目录里的同名文件，连带改掉其他方案（`luna_pinyin_simp` 用的方案和词库会换成上游为反查准备的那份，预设词汇从 44 万行变成 14 万行）。这些文件一律不拷，方案里的反查改用共享目录里的原版。TypeDuck 的词频表改名为 `typeduck_essay.txt`，在 `jyut6ping3.dict.yaml` 里用 `vocabulary: typeduck_essay` 指过去。`jyut6ping3_mobile*` 等手机专用方案也不拷。
 
@@ -133,20 +133,20 @@ python3 install-jyutping.py --source ~/schema   # 用已有的上游检出
 
 没有用 librime 自带的 `reverse_lookup_filter`：它把所有读音按字母序列出（呢：le1 le4 li1 nai4 ne1 nei1 nei4 ni1），分不出常用音。
 
+**5. 普通话反查：`` `p `` 全拼，另加 `` `x `` 小鹤双拼。** 上游只有 `` `p ``（全拼）。脚本在 `jyut6ping3.schema.yaml` 里照着它再加一个 `` `x ``（`` `xulpb `` → 雙拼），输入栏原样显示双拼码。两个反查的 prism 各由一个辅助方案编译：`jyut6ping3_pinyin.schema.yaml` 和 `jyut6ping3_flypy.schema.yaml`，都只引用 `luna_pinyin` 词库，不需要加进 `schema_list`，方案的依赖里用它们换掉了 `luna_pinyin`。这样反查不依赖 `luna_pinyin.schema` 本身——用户目录里有 `luna_pinyin.custom.yaml` 把 `translator/dictionary` 改成别的词库时，`luna_pinyin.prism.bin` 不会生成，上游的写法在这种环境下 `` `p `` 没有候选。全拼的辅助方案只带简拼和 `ü` 的 `v` / `ue` 写法，没有抄 `luna_pinyin` 的容错拼写。
+
 选项：
 
 | 选项 | 作用 |
 |---|---|
 | `--languages eng,hin` | 显示哪些语言的释义，可选 `eng` `hin` `urd` `nep` `ind`，默认 `eng` |
 | `--spelling-hints N` | 不超过 N 个音节的候选显示粤拼，`0` 关闭，默认 `10` |
-| `--flypy` | 普通话反查（`` `p ``）改用小鹤双拼输入，见下 |
 | `--force` | 覆盖用户目录里不是本脚本装的同名文件 |
 
-**小鹤双拼反查（`--flypy`）。** 方案里 `` `p `` 前缀的普通话反查默认敲全拼。加 `--flypy` 后改敲小鹤双拼（`` `pulpb `` → 雙拼）：脚本另外生成 `jyut6ping3_flypy.schema.yaml`，它只用来给 `luna_pinyin` 词库编译一份小鹤的 prism，不需要加进 `schema_list`；`jyut6ping3.schema.yaml` 的依赖和反查的 `prism` 指向它，并去掉全拼用的 `preedit_format`（输入栏原样显示双拼码）。这样反查也不再依赖 `luna_pinyin.schema` 本身——用户目录里有 `luna_pinyin.custom.yaml` 把 `translator/dictionary` 改成别的词库时，`luna_pinyin.prism.bin` 不会生成，默认的全拼反查没有候选，`--flypy` 不受影响。每次重跑都要带上这个选项，否则会改回全拼。
 
 释义的其余设置在生成的 `template.yaml` 里（`typeduck_gloss:` 一节：`show_pos`、`separator`、`max_length`），重跑脚本会被写回默认值。
 
-脚本生成的三个文件（`template.yaml`、`jyut6ping3.schema.yaml`、`jyut6ping3.dict.yaml`）首行带标记，重跑时直接更新；原样拷贝的文件内容相同就跳过。用户目录里已有内容不同、又不是本脚本生成的同名文件时保留原文件并列出，`--force` 才覆盖——上游更新后重跑，原样拷贝的词库也属于这种情况，要加 `--force`。
+脚本生成的文件（`template.yaml`、`jyut6ping3.schema.yaml`、`jyut6ping3.dict.yaml` 和两个辅助方案）首行带标记，重跑时直接更新；原样拷贝的文件内容相同就跳过。用户目录里已有内容不同、又不是本脚本生成的同名文件时保留原文件并列出，`--force` 才覆盖——上游更新后重跑，原样拷贝的词库也属于这种情况，要加 `--force`。
 
 ### 测试（粤拼）
 

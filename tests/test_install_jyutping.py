@@ -59,8 +59,12 @@ schema:
     - luna_pinyin
 
 engine:
+  segmentors:
+    - affix_segmentor@luna_pinyin
+    - affix_segmentor@loengfan
   translators:
     - script_translator@luna_pinyin
+    - script_translator@loengfan
 
 luna_pinyin:
   tag: luna_pinyin
@@ -78,6 +82,11 @@ loengfan:
   tips: 〔粵語兩分〕
   preedit_format:
     - xform/a/b/
+
+recognizer:
+  patterns:
+    luna_pinyin: "^`p[a-z']*;?$"
+    loengfan: "^`l[a-z']*;?$"
 """
 DICT = "\n---\nname: jyut6ping3\nsort: by_weight\nuse_preset_vocabulary: true\n...\n\n香\thoeng1\t100.0%\n"
 SCOLAR = "\n".join([
@@ -124,21 +133,55 @@ class TransformTest(unittest.TestCase):
         self.assertIn('    - "xlit|ab|日月|"', lines)
         self.assertIn("    - common:/use_cangjie3?", lines)
 
-    def test_flypy(self):
-        lines = ij.patch_flypy(ij.patch_schema(FULL_SCHEMA)).split("\n")
-        self.assertEqual(lines[lines.index("schema:"):lines.index("engine:")],
-                         ["schema:", "  dependencies:", "    - jyut6ping3_scolar", "    - " + ij.FLYPY, ""])
-        # the engine keeps naming the section, only the dependency changes
-        self.assertIn("    - script_translator@luna_pinyin", lines)
-        self.assertEqual(lines[lines.index("luna_pinyin:"):lines.index("loengfan:")],
-                         ["luna_pinyin:", "  tag: luna_pinyin", "  dictionary: luna_pinyin",
-                          "  prism: " + ij.FLYPY, '  prefix: "`p"', "  tips: 〔普通話·小鶴〕", ""])
-        self.assertEqual(lines[lines.index("loengfan:"):],
+    def test_lookup(self):
+        lines = ij.patch_lookup(ij.patch_schema(FULL_SCHEMA)).split("\n")
+
+        def part(start, end):
+            return lines[lines.index(start):lines.index(end)]
+
+        self.assertEqual(part("schema:", "engine:"),
+                         ["schema:", "  dependencies:", "    - jyut6ping3_scolar", "    - " + ij.PINYIN,
+                          "    - " + ij.FLYPY, ""])
+        self.assertEqual(part("engine:", "luna_pinyin:"),
+                         ["engine:", "  segmentors:", "    - affix_segmentor@luna_pinyin",
+                          "    - affix_segmentor@luna_flypy", "    - affix_segmentor@loengfan", "  translators:",
+                          "    - script_translator@luna_pinyin", "    - script_translator@luna_flypy",
+                          "    - script_translator@loengfan", ""])
+        # `p: only the prism is added
+        self.assertEqual(part("luna_pinyin:", "luna_flypy:"),
+                         ["luna_pinyin:", "  tag: luna_pinyin", "  dictionary: luna_pinyin", "  prism: " + ij.PINYIN,
+                          '  prefix: "`p"', "  tips: 〔普通話〕", "  preedit_format:", "    - xform/([nl])v/$1ü/",
+                          "    - xform/([jqxy])v/$1u/", ""])
+        # `x: a copy with its own tag, prism and prefix, and without the Pinyin preedit
+        self.assertEqual(part("luna_flypy:", "loengfan:"),
+                         ["luna_flypy:", "  tag: luna_flypy", "  dictionary: luna_pinyin", "  prism: " + ij.FLYPY,
+                          '  prefix: "`x"', "  tips: 〔普通話·小鶴〕", ""])
+        self.assertEqual(part("loengfan:", "recognizer:"),
                          ["loengfan:", "  dictionary: loengfan", "  tips: 〔粵語兩分〕", "  preedit_format:",
                           "    - xform/a/b/", ""])
-        for anchor in ("    - luna_pinyin\n", "  dictionary: luna_pinyin\n"):
+        self.assertEqual(lines[lines.index("recognizer:"):],
+                         ["recognizer:", "  patterns:", "    luna_pinyin: \"^`p[a-z']*;?$\"",
+                          "    luna_flypy: \"^`x[a-z']*;?$\"", "    loengfan: \"^`l[a-z']*;?$\"", ""])
+        for anchor in ("    - luna_pinyin\n", "    - affix_segmentor@luna_pinyin\n",
+                       "    - script_translator@luna_pinyin\n", "  dictionary: luna_pinyin\n",
+                       "  tag: luna_pinyin\n", '  prefix: "`p"\n', "    luna_pinyin: \"^`p[a-z']*;?$\"\n"):
             with self.assertRaises(ValueError):
-                ij.patch_flypy(FULL_SCHEMA.replace(anchor, ""))
+                ij.patch_lookup(FULL_SCHEMA.replace(anchor, ""))
+
+    def test_lookup_section_last(self):
+        # the section ends the file, without a blank line after it
+        section = FULL_SCHEMA[FULL_SCHEMA.index("luna_pinyin:\n"):FULL_SCHEMA.index("loengfan:")]
+        moved = FULL_SCHEMA.replace(section, "").rstrip("\n") + "\n\n" + section.rstrip("\n")
+        lines = ij.patch_lookup(moved).split("\n")
+        self.assertEqual(lines[lines.index("luna_flypy:") - 1], "")
+        self.assertIn("  prism: " + ij.FLYPY, lines[lines.index("luna_flypy:"):])
+
+    def test_helper_schema(self):
+        text = ij.helper_schema(ij.FLYPY, "小鶴雙拼", ij.FLYPY_ALGEBRA)
+        self.assertIn("  schema_id: %s\n" % ij.FLYPY, text)
+        self.assertIn("  algebra:\n    - erase/^xx$/\n", text)
+        self.assertIn("    - xform/in$/B/\n", text)
+        self.assertTrue(text.endswith("translator:\n  dictionary: luna_pinyin\n  prism: %s\n" % ij.FLYPY))
 
     def test_dict(self):
         lines = ij.patch_dict(DICT).split("\n")
@@ -181,7 +224,7 @@ class InstallTest(unittest.TestCase):
         for name in ij.VERBATIM:
             (self.source / name).write_text("# upstream " + name + "\n", encoding="utf-8")
         files = {
-            "template.yaml": TEMPLATE, "jyut6ping3.schema.yaml": SCHEMA, "jyut6ping3.dict.yaml": DICT,
+            "template.yaml": TEMPLATE, "jyut6ping3.schema.yaml": FULL_SCHEMA, "jyut6ping3.dict.yaml": DICT,
             "jyut6ping3_scolar.dict.yaml": SCOLAR, "essay.txt": "香港\t100\n", "opencc/hk2s.json": "{}\n",
             # must never reach the user directory
             "luna_pinyin.dict.yaml": "x\n", "cangjie5.schema.yaml": "x\n", "stroke.dict.yaml": "x\n",
@@ -209,6 +252,7 @@ class InstallTest(unittest.TestCase):
         installed = sorted(p.relative_to(self.user).as_posix() for p in self.user.rglob("*") if p.is_file())
         self.assertEqual(installed, sorted(ij.VERBATIM + [
             "template.yaml", "jyut6ping3.schema.yaml", "jyut6ping3.dict.yaml", "typeduck_essay.txt",
+            ij.PINYIN + ".schema.yaml", ij.FLYPY + ".schema.yaml",
             "opencc/hk2s.json", "lua/typeduck_gloss.lua", "lua/typeduck_gloss.txt",
             "lua/typeduck_readings.txt"]))
         for name in ("template.yaml", "jyut6ping3.schema.yaml", "jyut6ping3.dict.yaml"):
@@ -243,26 +287,24 @@ class InstallTest(unittest.TestCase):
         self.run_main(["--languages", "eng,urd", "--spelling-hints", "0"])
         self.assertIn("  languages: [ eng, urd ]\n", self.read("template.yaml"))
         self.assertNotIn("spelling_hints", self.read("template.yaml"))
-        (self.source / "jyut6ping3.schema.yaml").write_text(SCHEMA + "added: 1\n", encoding="utf-8")
+        (self.source / "jyut6ping3.schema.yaml").write_text(FULL_SCHEMA + "added: 1\n", encoding="utf-8")
         self.run_main()
         self.assertIn("added: 1\n", self.read("jyut6ping3.schema.yaml"))
         self.assertIn("  spelling_hints: 10\n", self.read("template.yaml"))
 
-    def test_flypy_install(self):
-        (self.source / "jyut6ping3.schema.yaml").write_text(FULL_SCHEMA, encoding="utf-8")
-        self.run_main(["--flypy"])
-        helper = self.read(ij.FLYPY + ".schema.yaml")
-        self.assertTrue(helper.startswith(ij.MARKER))
-        self.assertIn("  schema_id: %s\n" % ij.FLYPY, helper)
-        self.assertIn("  dictionary: luna_pinyin\n  prism: %s\n" % ij.FLYPY, helper)
-        self.assertIn("  prism: %s\n" % ij.FLYPY, self.read("jyut6ping3.schema.yaml"))
-        # without the option the lookup goes back to full Pinyin
+    def test_lookup_install(self):
         self.run_main()
-        self.assertNotIn(ij.FLYPY, self.read("jyut6ping3.schema.yaml"))
-        # an upstream schema the option cannot be applied to is an error
+        for name in (ij.PINYIN, ij.FLYPY):
+            helper = self.read(name + ".schema.yaml")
+            self.assertTrue(helper.startswith(ij.MARKER))
+            self.assertIn("  schema_id: %s\n" % name, helper)
+        schema = self.read("jyut6ping3.schema.yaml")
+        self.assertIn("  prism: %s\n" % ij.PINYIN, schema)
+        self.assertIn("  prism: %s\n" % ij.FLYPY, schema)
+        # an upstream schema the lookups cannot be built from is an error
         (self.source / "jyut6ping3.schema.yaml").write_text(SCHEMA, encoding="utf-8")
         with self.assertRaises(SystemExit):
-            self.run_main(["--flypy"])
+            self.run_main()
 
     def test_bad_arguments(self):
         for extra in (["--languages", "deu"], ["--languages", ""], ["--source", str(self.user)]):
