@@ -30,7 +30,22 @@ translator:
     - xform/^/\f/
     - xform/~//
 """
+LOOKUP = r"""reverse_lookup:
+  tag: reverse_lookup
+  prefix: "`"
+  tips: 〔反查〕
+
+recognizer:
+  patterns:
+    stroke: "^`b[a-z']*;?$"
+    reverse_lookup: "^`[a-z']*;?$"
+"""
 SCHEMA = r"""__include: template:/
+
+engine:
+  segmentors:
+    - affix_segmentor@stroke
+    - affix_segmentor@reverse_lookup
 
 luna_pinyin:
   tag: luna_pinyin
@@ -50,8 +65,14 @@ cangjie:
     - "xlit|ab|日月|"
   __patch:
     - common:/use_cangjie3?
-"""
+
+""" + LOOKUP
 FULL_SCHEMA = r"""__include: template:/
+
+reverse_lookup:
+  tag: reverse_lookup
+  prefix: "`"
+  tips: 〔反查〕
 
 schema:
   dependencies:
@@ -87,6 +108,7 @@ recognizer:
   patterns:
     luna_pinyin: "^`p[a-z']*;?$"
     loengfan: "^`l[a-z']*;?$"
+    reverse_lookup: "^`[a-z']*;?$"
 """
 DICT = "\n---\nname: jyut6ping3\nsort: by_weight\nuse_preset_vocabulary: true\n...\n\n香\thoeng1\t100.0%\n"
 SCOLAR = "\n".join([
@@ -133,6 +155,20 @@ class TransformTest(unittest.TestCase):
         self.assertIn('    - "xlit|ab|日月|"', lines)
         self.assertIn("    - common:/use_cangjie3?", lines)
 
+    def test_schema_catch_all_pattern_sorts_last(self):
+        lines = ij.patch_schema(SCHEMA).split("\n")
+        # the section and the segmentor keep their name; the tag and its pattern move
+        self.assertEqual(lines[lines.index("reverse_lookup:"):lines.index("recognizer:")],
+                         ["reverse_lookup:", "  tag: " + ij.LOOKUP_TAG, '  prefix: "`"', "  tips: 〔反查〕", ""])
+        self.assertIn("    - affix_segmentor@reverse_lookup", lines)
+        patterns = [l.strip().split(":")[0] for l in lines[lines.index("  patterns:") + 1:] if l.strip()]
+        self.assertEqual(patterns, ["stroke", ij.LOOKUP_TAG])
+        self.assertEqual(sorted(patterns), patterns)
+        self.assertIn("    %s: \"^`[a-z']*;?$\"" % ij.LOOKUP_TAG, lines)
+        for anchor in ("  tag: reverse_lookup\n", "    reverse_lookup: \"^`[a-z']*;?$\"\n"):
+            with self.assertRaises(ValueError):
+                ij.patch_schema(SCHEMA.replace(anchor, ""))
+
     def test_lookup(self):
         lines = ij.patch_lookup(ij.patch_schema(FULL_SCHEMA)).split("\n")
 
@@ -161,7 +197,8 @@ class TransformTest(unittest.TestCase):
                           "    - xform/a/b/", ""])
         self.assertEqual(lines[lines.index("recognizer:"):],
                          ["recognizer:", "  patterns:", "    luna_pinyin: \"^`p[a-z']*;?$\"",
-                          "    luna_flypy: \"^`x[a-z']*;?$\"", "    loengfan: \"^`l[a-z']*;?$\"", ""])
+                          "    luna_flypy: \"^`x[a-z']*;?$\"", "    loengfan: \"^`l[a-z']*;?$\"",
+                          "    %s: \"^`[a-z']*;?$\"" % ij.LOOKUP_TAG, ""])
         for anchor in ("    - luna_pinyin\n", "    - affix_segmentor@luna_pinyin\n",
                        "    - script_translator@luna_pinyin\n", "  dictionary: luna_pinyin\n",
                        "  tag: luna_pinyin\n", '  prefix: "`p"\n', "    luna_pinyin: \"^`p[a-z']*;?$\"\n"):
