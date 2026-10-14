@@ -270,6 +270,7 @@ check("first segment has nothing before it",
 
 local long = { Segment(0, 2, "不"), Segment(2, 5, "受"), Segment(5, 9, "约"), Segment(9, 11) }
 local env14 = split_env(long, true)
+gloss.tags_match(long[#long], env14)
 check("preceding texts in order, via get_at", table.concat(gloss.preceding_texts(env14), "|") == "不|受|约")
 check("longest word first",
   filter_last(env14, long, { Candidate("Phrase", "束", "") })[1].comment == " 不受约束: ungebunden (Adj)")

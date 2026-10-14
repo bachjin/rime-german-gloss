@@ -7,9 +7,15 @@ local US, RS = "\31", "\30"
 local function record(...) return table.concat({ ... }, US) end
 
 -- ---- fixture: a user data directory holding lua/typeduck_gloss.txt ---------
+-- cmd.exe on Windows has neither `mkdir -p` nor `rm -rf`; its mkdir creates
+-- missing parents by itself but wants backslashes.
+local WINDOWS = package.config:sub(1, 1) == "\\"
+local function native(path)
+  return WINDOWS and (path:gsub("/", "\\")) or path
+end
 local dir = os.tmpname()
 os.remove(dir)
-assert(os.execute('mkdir -p "' .. dir .. '/lua"'))
+assert(os.execute((WINDOWS and 'mkdir "' or 'mkdir -p "') .. native(dir .. "/lua") .. '"'))
 local index_path = dir .. "/lua/typeduck_gloss.txt"
 local f = assert(io.open(index_path, "wb"))
 f:write("行\t" .. table.concat({
@@ -198,6 +204,6 @@ check("missing index warns", #warnings == 1 and warnings[1]:find("index not foun
 out = run_filter(gloss, env6, { Candidate("香港", "hoeng1 gong2") })
 check("missing index passes through", #out == 1 and out[1].shadow == nil)
 
-os.execute('rm -rf "' .. dir .. '"')
+os.execute((WINDOWS and 'rmdir /s /q "' or 'rm -rf "') .. native(dir) .. '"')
 print(string.format("%d/%d checks passed", total - failures, total))
 os.exit(failures == 0 and 0 or 1)
