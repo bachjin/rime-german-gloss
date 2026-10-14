@@ -20,6 +20,13 @@
 -- Exact matches take precedence over normalized ones. Keys of `base_dictionary`
 -- are not normalized at load time; it is expected to list both scripts.
 --
+-- Split input: when the input is cut into segments (e.g. by delimited_code.lua,
+-- "vmpi;dl" gives 约 + 束), each segment only offers its own candidates, so
+-- the word they form would never be looked up. For a candidate of a later
+-- segment the filter therefore first tries the texts chosen in the segments
+-- right before it plus the candidate (约束), longest first, and shows that
+-- word's gloss as "约束: zügeln (V)"; otherwise the candidate's own gloss.
+--
 -- Dictionary format: UTF-8 TSV, one entry per line: <Chinese>\t<German>.
 -- Empty lines and lines starting with '#' are ignored. Repeated keys are
 -- joined with "; " in file order (exact duplicates are dropped).
@@ -233,16 +240,85 @@ function M.init(env)
   env.gloss_conv = entry.conv
 end
 
-function M.func(input, env)
-  local dict = env.gloss_dict or {}
+-- Called by librime-lua with the segment about to be filtered. Remembers
+-- where it starts, so that func can find the segments before it.
+function M.tags_match(segment, env)
+  local ok, start = pcall(function() return segment.start end)
+  env.gloss_segment_start = ok and start or nil
+  return true
+end
+
+local function segments_of(segmentation)
+  local ok, list = pcall(function() return segmentation:get_segments() end)
+  if ok and type(list) == "table" then
+    return list
+  end
+  list = {}
+  local i = 0
+  while true do
+    local got, seg = pcall(function() return segmentation:get_at(i) end)
+    if not got or seg == nil then
+      return list
+    end
+    list[#list + 1] = seg
+    i = i + 1
+  end
+end
+
+-- Texts chosen in the run of segments that ends where the current segment
+-- starts, in input order; empty when the current segment is the first.
+function M.preceding_texts(env)
+  local start = env.gloss_segment_start
+  if not start or start <= 0 then
+    return {}
+  end
+  local ok, texts = pcall(function()
+    local by_end = {}
+    for _, seg in ipairs(segments_of(env.engine.context.composition:toSegmentation())) do
+      by_end[seg._end] = seg
+    end
+    local found, pos = {}, start
+    while pos > 0 and by_end[pos] do
+      local seg = by_end[pos]
+      local cand = seg:get_selected_candidate()
+      if not cand or cand.text == "" or seg.start >= pos then
+        break
+      end
+      table.insert(found, 1, cand.text)
+      pos = seg.start
+    end
+    return found
+  end)
+  return ok and texts or {}
+end
+
+-- Gloss for `text` in the user's dictionary, else in the base dictionary.
+local function find(env, text)
   local conv = env.gloss_conv
-  local base = env.gloss_base or {}
-  local max_length = env.gloss_max_length
+  return M.lookup(env.gloss_dict or {}, conv, text) or M.lookup(env.gloss_base or {}, conv, text)
+end
+
+-- The gloss to show for `cand`: of the word it completes with the texts in
+-- `before` (longest first), else of the candidate itself, else nil.
+function M.gloss_for(cand, before, env)
+  for i = 1, #before do
+    local word = table.concat(before, "", i) .. cand.text
+    local gloss = find(env, word)
+    if gloss then
+      return word .. ": " .. M.truncate(gloss, env.gloss_max_length)
+    end
+  end
+  local gloss = find(env, cand.text)
+  return gloss and M.truncate(gloss, env.gloss_max_length)
+end
+
+function M.func(input, env)
+  local before = M.preceding_texts(env)
   for cand in input:iter() do
     -- A failing lookup must never cost the user a candidate.
     local ok, annotated = pcall(function()
-      local gloss = M.lookup(dict, conv, cand.text) or M.lookup(base, conv, cand.text)
-      return gloss and M.annotate(cand, M.truncate(gloss, max_length))
+      local gloss = M.gloss_for(cand, before, env)
+      return gloss and M.annotate(cand, gloss)
     end)
     yield(ok and annotated or cand)
   end
