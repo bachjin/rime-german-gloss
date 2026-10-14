@@ -82,6 +82,9 @@ class ReweightTest(unittest.TestCase):
             ic.reweight("name: x\n", {})
 
 
+LOOKUP = "".join("  %s\n" % line for line in ic.LOOKUP_LINES)
+
+
 class InstallTest(unittest.TestCase):
     def run_main(self, user, extra=()):
         with contextlib.redirect_stdout(io.StringIO()):
@@ -103,9 +106,14 @@ class InstallTest(unittest.TestCase):
     def test_fresh_install_and_rerun(self):
         self.run_main(self.user)
         custom = self.user / "cangjie5.custom.yaml"
-        expected = ic.MARKER + "\npatch:\n  " + ic.SEGMENTOR_LINE + "\n"
+        expected = ic.MARKER + "\npatch:\n  " + ic.SEGMENTOR_LINE + "\n" + LOOKUP
         self.assertEqual(custom.read_text(encoding="utf-8"), expected)
         self.assertTrue((self.user / "lua" / "delimited_code.lua").is_file())
+        helper = (self.user / (ic.FLYPY + ".schema.yaml")).read_text(encoding="utf-8")
+        self.assertTrue(helper.startswith(ic.MARKER))
+        self.assertIn("  schema_id: %s\n" % ic.FLYPY, helper)
+        self.assertIn("    - xform/in$/B/\n", helper)
+        self.assertTrue(helper.endswith("translator:\n  dictionary: luna_pinyin\n  prism: %s\n" % ic.FLYPY))
         installed = (self.user / "cangjie5.dict.yaml").read_text(encoding="utf-8")
         self.assertTrue(installed.startswith(ic.DICT_MARKER))
         self.assertIn("欠\tno\t\t8975\n", installed)
@@ -116,10 +124,25 @@ class InstallTest(unittest.TestCase):
     def test_appends_to_generated_custom_yaml(self):
         custom = self.user / "cangjie5.custom.yaml"
         custom.write_text(ic.MARKER + "\npatch:\n  engine/filters/@next: lua_filter@*german_gloss\n", encoding="utf-8")
-        self.run_main(self.user, ["--skip-dict"])
+        self.run_main(self.user, ["--skip-dict", "--skip-lookup"])
         self.assertEqual(custom.read_text(encoding="utf-8").split("\n")[-3:],
                          ["  engine/filters/@next: lua_filter@*german_gloss", "  " + ic.SEGMENTOR_LINE, ""])
         self.assertFalse((self.user / "cangjie5.dict.yaml").exists())
+        self.assertFalse((self.user / (ic.FLYPY + ".schema.yaml")).exists())
+        # the lookup is appended after it, once
+        self.run_main(self.user, ["--skip-dict"])
+        self.run_main(self.user, ["--skip-dict"])
+        self.assertEqual(custom.read_text(encoding="utf-8"),
+                         ic.MARKER + "\npatch:\n  engine/filters/@next: lua_filter@*german_gloss\n  "
+                         + ic.SEGMENTOR_LINE + "\n" + LOOKUP)
+
+    def test_lookup_only(self):
+        self.run_main(self.user, ["--skip-dict", "--skip-segmentor", "--schema", "cangjie3"])
+        self.assertEqual((self.user / "cangjie3.custom.yaml").read_text(encoding="utf-8"),
+                         ic.MARKER + "\npatch:\n" + LOOKUP)
+        self.assertIn("  reverse_lookup/preedit_format: []\n", LOOKUP)
+        self.assertFalse((self.user / "lua").exists())
+        self.assertFalse((self.user / "cangjie5.custom.yaml").exists())
 
     def test_foreign_files_are_kept(self):
         custom = self.user / "cangjie5.custom.yaml"
@@ -129,8 +152,15 @@ class InstallTest(unittest.TestCase):
         self.run_main(self.user)
         self.assertEqual(custom.read_text(encoding="utf-8"), "patch:\n  foo: 1\n")
         self.assertEqual(own.read_text(encoding="utf-8"), "# mine\n")
+        helper = self.user / (ic.FLYPY + ".schema.yaml")
+        helper.write_text("# mine\n", encoding="utf-8")
+        self.run_main(self.user)
+        self.assertEqual(helper.read_text(encoding="utf-8"), "# mine\n")
         self.run_main(self.user, ["--force", "--skip-segmentor"])
         self.assertTrue(own.read_text(encoding="utf-8").startswith(ic.DICT_MARKER))
+        self.assertTrue(helper.read_text(encoding="utf-8").startswith(ic.MARKER))
+        # a hand-written custom.yaml is never touched, not even with --force
+        self.assertEqual(custom.read_text(encoding="utf-8"), "patch:\n  foo: 1\n")
 
     def test_generated_source_rejected(self):
         self.run_main(self.user)
