@@ -25,12 +25,12 @@ frontends. This script installs it for stock librime with librime-lua:
    entry by frequency; the filter shows them on reverse-lookup candidates
    (`p Mandarin, `c Cangjie, ...), which would otherwise carry no Jyutping.
 
-4. Reverse lookup (--flypy only): the schema's Mandarin lookup, prefix `p, is
-   typed in full Pinyin. With --flypy it is typed in 小鶴雙拼 instead: the
-   script installs jyut6ping3_flypy.schema.yaml, a helper schema that only
-   compiles a Flypy prism for the luna_pinyin dictionary, and points the
-   lookup at it. That also keeps the lookup independent of luna_pinyin.schema,
-   whose prism is missing when a luna_pinyin.custom.yaml renames its dictionary.
+4. Reverse lookup: the schema's Mandarin lookup, prefix `p, is typed in full
+   Pinyin. The script adds a second one, prefix `x, typed in 小鶴雙拼. Each
+   takes its prism from a helper schema the script installs
+   (jyut6ping3_pinyin, jyut6ping3_flypy), which only compiles a prism for the
+   luna_pinyin dictionary. So neither depends on luna_pinyin.schema, whose
+   prism is missing when a luna_pinyin.custom.yaml renames its dictionary.
 
 The schema is not added to default.custom.yaml; the script prints the line to
 add. Rerun after TypeDuck updates its schema. Redeploy Rime afterwards.
@@ -55,7 +55,9 @@ FILTER = "lua_filter@*typeduck_gloss"
 ESSAY = "typeduck_essay"
 INDEX = "lua/typeduck_gloss.txt"
 READINGS = "lua/typeduck_readings.txt"
+PINYIN = SCHEMA + "_pinyin"
 FLYPY = SCHEMA + "_flypy"
+FLYPY_TIPS = "〔普通話·小鶴〕"
 # New name of the schema's catch-all recognizer pattern "reverse_lookup"; see
 # patch_schema().
 LOOKUP_TAG = "zz_reverse_lookup"
@@ -165,92 +167,152 @@ def patch_schema(text):
     return "\n".join(out)
 
 
-def patch_flypy(text):
-    """Make the Mandarin reverse lookup of jyut6ping3.schema.yaml take 小鶴雙拼.
+PINYIN_ALGEBRA = [
+    "erase/^xx$/",
+    "abbrev/^([a-z]).+$/$1/",
+    "abbrev/^([zcs]h).+$/$1/",
+    "derive/^([nl])ve$/$1ue/",
+    "derive/^([jqxy])u/$1v/",
+]
+# 小鶴雙拼 spelling algebra of rime-double-pinyin's double_pinyin_flypy.
+FLYPY_ALGEBRA = [
+    "erase/^xx$/",
+    "derive/^([jqxy])u$/$1v/",
+    "derive/^([aoe])([ioun])$/$1$1$2/",
+    "xform/^([aoe])(ng)?$/$1$1$2/",
+    "xform/iu$/Q/",
+    "xform/(.)ei$/$1W/",
+    "xform/uan$/R/",
+    "xform/[uv]e$/T/",
+    "xform/un$/Y/",
+    "xform/^sh/U/",
+    "xform/^ch/I/",
+    "xform/^zh/V/",
+    "xform/uo$/O/",
+    "xform/ie$/P/",
+    "xform/i?ong$/S/",
+    "xform/(ing|uai)$/K/",
+    "xform/(.)ai$/$1D/",
+    "xform/(.)en$/$1F/",
+    "xform/(.)eng$/$1G/",
+    "xform/[iu]ang$/L/",
+    "xform/(.)ang$/$1H/",
+    "xform/ian$/M/",
+    "xform/(.)an$/$1J/",
+    "xform/(.)ou$/$1Z/",
+    "xform/[iu]a$/X/",
+    "xform/iao$/N/",
+    "xform/(.)ao$/$1C/",
+    "xform/ui$/V/",
+    "xform/in$/B/",
+    "xlit/QWRTYUIOPSDFGHJKLZXCVBNM/qwrtyuiopsdfghjklzxcvbnm/",
+]
 
-    The FLYPY schema replaces luna_pinyin as a dependency and provides the
-    prism; the Pinyin `preedit_format:` goes, as it would rewrite the codes.
-    """
-    out, section, skipping = [], None, False
-    depends = prism = False
-    for line in text.split("\n"):
-        if line and not line[0].isspace() and not line.startswith("#"):
-            section = line.split(":")[0]
+
+def helper_schema(schema_id, name, algebra):
+    """A schema that only compiles a prism of the luna_pinyin dictionary."""
+    return "\n".join([
+        "",
+        "schema:",
+        "  schema_id: " + schema_id,
+        "  name: %s（粵拼反查）" % name,
+        '  version: "1"',
+        "  description: |",
+        "    Compiles the %s prism for the Mandarin reverse lookup of jyut6ping3." % name,
+        "    Not meant for the schema list.",
+        "",
+        "speller:",
+        "  alphabet: zyxwvutsrqponmlkjihgfedcba",
+        "  delimiter: \" '\"",
+        "  algebra:",
+    ] + ["    - " + rule for rule in algebra] + [
+        "",
+        "translator:",
+        "  dictionary: luna_pinyin",
+        "  prism: " + schema_id,
+        "",
+    ])
+
+
+def indent_of(line):
+    return line[: len(line) - len(line.lstrip())]
+
+
+def flypy_section(block, found):
+    """Derive the `luna_flypy:` section from the lines of `luna_pinyin:`."""
+    out, skipping = ["luna_flypy:"], False
+    for line in block[1:]:
+        key = line.strip().split(":")[0]
         if skipping:
             if line.lstrip().startswith("- "):
                 continue
             skipping = False
-        if section == "schema" and line.strip() == "- luna_pinyin":
-            line = line.replace("luna_pinyin", FLYPY)
-            depends = True
-        elif section == "luna_pinyin":
-            key = line.strip().split(":")[0]
-            if key == "preedit_format":
-                skipping = True
-                continue
-            if key == "tips":
-                line = line.split(":")[0] + ": 〔普通話·小鶴〕"
-            elif key == "dictionary":
-                out.append(line)
-                line = line.split("dictionary:")[0] + "prism: " + FLYPY
-                prism = True
-        out.append(line)
-    if not depends:
-        raise ValueError("jyut6ping3.schema.yaml: no '- luna_pinyin' in schema/dependencies")
-    if not prism:
-        raise ValueError("jyut6ping3.schema.yaml: no 'dictionary:' in the luna_pinyin section")
+        if key == "preedit_format":  # written for Pinyin; it would rewrite the codes
+            skipping = True
+        elif key == "tag":
+            out.append(indent_of(line) + "tag: luna_flypy")
+            found.add("tag")
+        elif key == "tips":
+            out.append(indent_of(line) + "tips: " + FLYPY_TIPS)
+        elif key == "prefix" and "`p" in line:
+            out.append(line.replace("`p", "`x"))
+            found.add("prefix")
+        elif key == "dictionary":
+            out += [line, indent_of(line) + "prism: " + FLYPY]
+        else:
+            out.append(line)
+    if out[-1].strip():
+        out.append("")
+    return out
+
+
+def patch_lookup(text):
+    """Rework the Mandarin reverse lookup of jyut6ping3.schema.yaml.
+
+    `p stays full Pinyin but takes its prism from the PINYIN helper schema;
+    a second lookup, `x, is added for 小鶴雙拼 with the FLYPY helper's prism.
+    Both helpers replace luna_pinyin in the dependencies.
+    """
+    out, found = [], set()
+    section, block = None, None  # block: the lines of the luna_pinyin section
+
+    def close():
+        if out and out[-1].strip():
+            out.append("")
+        out.extend(flypy_section(block, found))
+
+    for line in text.split("\n"):
+        if line and not line[0].isspace() and not line.startswith("#"):
+            if block is not None:
+                close()
+                block = None
+            section = line.split(":")[0]
+            if section == "luna_pinyin":
+                block = []
+        item = line.strip()
+        if block is not None:
+            block.append(line)
+            out.append(line)
+            if item.startswith("dictionary:"):
+                out.append(indent_of(line) + "prism: " + PINYIN)
+                found.add("dictionary")
+        elif section == "schema" and item == "- luna_pinyin":
+            out += [indent_of(line) + "- " + PINYIN, indent_of(line) + "- " + FLYPY]
+            found.add("dependency")
+        elif section == "engine" and item in ("- affix_segmentor@luna_pinyin", "- script_translator@luna_pinyin"):
+            out += [line, line.replace("@luna_pinyin", "@luna_flypy")]
+            found.add(item[2:].split("@")[0])
+        elif section == "recognizer" and item.startswith("luna_pinyin:") and "`p" in line:
+            out += [line, line.replace("luna_pinyin:", "luna_flypy:").replace("`p", "`x")]
+            found.add("pattern")
+        else:
+            out.append(line)
+    if block is not None:
+        close()
+    for anchor in ("dependency", "affix_segmentor", "script_translator", "dictionary", "tag", "prefix", "pattern"):
+        if anchor not in found:
+            raise ValueError("jyut6ping3.schema.yaml: no luna_pinyin %s to build the lookups from" % anchor)
     return "\n".join(out)
-
-
-# 小鶴雙拼 spelling algebra of rime-double-pinyin's double_pinyin_flypy.
-FLYPY_SCHEMA = r"""
-schema:
-  schema_id: %s
-  name: 小鶴雙拼（粵拼反查）
-  version: "1"
-  description: |
-    Compiles the 小鶴雙拼 prism for the Mandarin reverse lookup of jyut6ping3.
-    Not meant for the schema list.
-
-speller:
-  alphabet: zyxwvutsrqponmlkjihgfedcba
-  delimiter: " '"
-  algebra:
-    - erase/^xx$/
-    - derive/^([jqxy])u$/$1v/
-    - derive/^([aoe])([ioun])$/$1$1$2/
-    - xform/^([aoe])(ng)?$/$1$1$2/
-    - xform/iu$/Q/
-    - xform/(.)ei$/$1W/
-    - xform/uan$/R/
-    - xform/[uv]e$/T/
-    - xform/un$/Y/
-    - xform/^sh/U/
-    - xform/^ch/I/
-    - xform/^zh/V/
-    - xform/uo$/O/
-    - xform/ie$/P/
-    - xform/i?ong$/S/
-    - xform/(ing|uai)$/K/
-    - xform/(.)ai$/$1D/
-    - xform/(.)en$/$1F/
-    - xform/(.)eng$/$1G/
-    - xform/[iu]ang$/L/
-    - xform/(.)ang$/$1H/
-    - xform/ian$/M/
-    - xform/(.)an$/$1J/
-    - xform/(.)ou$/$1Z/
-    - xform/[iu]a$/X/
-    - xform/iao$/N/
-    - xform/(.)ao$/$1C/
-    - xform/ui$/V/
-    - xform/in$/B/
-    - xlit/QWRTYUIOPSDFGHJKLZXCVBNM/qwrtyuiopsdfghjklzxcvbnm/
-
-translator:
-  dictionary: luna_pinyin
-  prism: %s
-""" % (FLYPY, FLYPY)
 
 
 def patch_dict(text):
@@ -417,7 +479,7 @@ class Installer:
         print("    installed %s" % name)
 
 
-def install(user_dir, source, origin, languages, spelling_hints, force, flypy=False):
+def install(user_dir, source, origin, languages, spelling_hints, force):
     """Install into one user directory; returns the names of files left alone."""
     inst = Installer(user_dir, force)
     header = "%s from %s\n" % (MARKER, origin)
@@ -433,11 +495,9 @@ def install(user_dir, source, origin, languages, spelling_hints, force, flypy=Fa
         return (source / name).read_text(encoding="utf-8")
 
     inst.write("template.yaml", header + patch_template(read("template.yaml"), languages, spelling_hints))
-    schema = patch_schema(read(SCHEMA + ".schema.yaml"))
-    if flypy:
-        schema = patch_flypy(schema)
-        inst.write(FLYPY + ".schema.yaml", header + FLYPY_SCHEMA)
-    inst.write(SCHEMA + ".schema.yaml", header + schema)
+    inst.write(SCHEMA + ".schema.yaml", header + patch_lookup(patch_schema(read(SCHEMA + ".schema.yaml"))))
+    inst.write(PINYIN + ".schema.yaml", header + helper_schema(PINYIN, "全拼", PINYIN_ALGEBRA))
+    inst.write(FLYPY + ".schema.yaml", header + helper_schema(FLYPY, "小鶴雙拼", FLYPY_ALGEBRA))
     inst.write(SCHEMA + ".dict.yaml", header + patch_dict(read(SCHEMA + ".dict.yaml")))
 
     (user_dir / "lua").mkdir(exist_ok=True)
@@ -471,8 +531,6 @@ def main(argv=None):
                         help="gloss languages, comma-separated, from: %s (default: eng)" % " ".join(LANGUAGES))
     parser.add_argument("--spelling-hints", type=int, default=10, metavar="N",
                         help="show Jyutping for candidates of up to N syllables; 0 disables (default: 10)")
-    parser.add_argument("--flypy", action="store_true",
-                        help="type the Mandarin reverse lookup (`p) in 小鶴雙拼 instead of full Pinyin")
     parser.add_argument("--force", action="store_true",
                         help="overwrite files in the user directory this script did not install")
     args = parser.parse_args(argv)
@@ -506,7 +564,7 @@ def main(argv=None):
         for d in dirs:
             print("==> %s" % d)
             try:
-                kept += install(d, source, origin, languages, args.spelling_hints, args.force, args.flypy)
+                kept += install(d, source, origin, languages, args.spelling_hints, args.force)
             except ValueError as error:
                 sys.exit("%s\nThe upstream schema has changed; this script needs updating." % error)
 

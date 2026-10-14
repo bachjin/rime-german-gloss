@@ -231,6 +231,60 @@ gloss.init(env11)
 check("missing base dict silent", #warnings == nwarn and next(env11.gloss_base) == nil)
 check("utf8 truncate", gloss.truncate("für Äpfel", 5) == "für Ä…" and gloss.truncate("kurz", 5) == "kurz")
 
+-- 9. split input: the word formed with the preceding segments comes first
+gloss.clear_cache()
+local tmp4 = os.tmpname()
+f = assert(io.open(tmp4, "wb"))
+f:write("约\tVerabredung\n束\tbinden\n约束\tzügeln (V)\n不受约束\tungebunden (Adj)\n")
+f:close()
+local function Segment(start, stop, text)
+  return { start = start, _end = stop,
+           get_selected_candidate = function() return text and { text = text } or nil end }
+end
+-- `list` mocks the composition; `via_get_at` hides get_segments, as on an older librime-lua
+local function split_env(list, via_get_at)
+  local env = mock_env(tmp4)
+  gloss.init(env)
+  local segmentation = {
+    get_at = function(_, i) return list[i + 1] end,
+  }
+  if not via_get_at then
+    segmentation.get_segments = function() return list end
+  end
+  env.engine.context = { composition = { toSegmentation = function() return segmentation end } }
+  return env
+end
+local function filter_last(env, list, cands)
+  gloss.tags_match(list[#list], env)
+  return run_filter(gloss, env, cands)
+end
+
+local split = { Segment(0, 5, "约"), Segment(5, 7) }
+local env13 = split_env(split)
+local out13 = filter_last(env13, split, { Candidate("Phrase", "束", ""), Candidate("Phrase", "棣", "") })
+check("tags_match applies everywhere", gloss.tags_match(split[2], env13) == true)
+check("word with preceding segment", out13[1].comment == " 约束: zügeln (V)")
+check("no word: candidate's own gloss", out13[2].comment == "")
+check("first segment has nothing before it",
+  filter_last(env13, { split[1] }, { Candidate("Phrase", "约", "") })[1].comment == " Verabredung")
+
+local long = { Segment(0, 2, "不"), Segment(2, 5, "受"), Segment(5, 9, "约"), Segment(9, 11) }
+local env14 = split_env(long, true)
+check("preceding texts in order, via get_at", table.concat(gloss.preceding_texts(env14), "|") == "不|受|约")
+check("longest word first",
+  filter_last(env14, long, { Candidate("Phrase", "束", "") })[1].comment == " 不受约束: ungebunden (Adj)")
+
+local gap = { Segment(0, 3, "约"), Segment(4, 6) }   -- not adjacent: nothing before
+local env15 = split_env(gap)
+check("non-adjacent segment ignored",
+  filter_last(env15, gap, { Candidate("Phrase", "束", "") })[1].comment == " binden")
+local env16 = mock_env(tmp4)                         -- no context at all
+gloss.init(env16)
+gloss.tags_match(Segment(5, 7), env16)
+check("missing context: plain gloss",
+  run_filter(gloss, env16, { Candidate("Phrase", "束", "") })[1].comment == " binden")
+os.remove(tmp4)
+
 -- a failing lookup passes the candidate through
 local env12 = mock_env(nil)
 gloss.init(env12)
