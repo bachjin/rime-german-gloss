@@ -7,6 +7,7 @@
 | [德语释义](#德语释义) | 在候选词注释里追加离线中德词典的德语释义，任何方案可用 | `install-linux.sh` / `install-windows.ps1` |
 | [仓颉增强](#仓颉增强) | `cangjie5`：分号分隔全码输入；重码首选按仓颉次序而不是字频；`` ` `` 反查改用小鹤双拼 | `install-cangjie.py` |
 | [粤拼（TypeDuck）](#粤拼typeduck) | 在原版 librime 上安装 TypeDuck 的 `jyut6ping3` 方案；候选词显示带声调的粤拼和英语等释义 | `install-jyutping.py` |
+| [德语输入](#德语输入) | 新方案 `deutsch`：用 ASCII 打德语（`muede` 出 müde），候选显示中文释义 | `install-german.py` |
 
 仓库名 `rime-german-gloss` 来自最早的那个定制。
 
@@ -23,6 +24,11 @@ lua/delimited_code.lua        仓颉增强：分隔符分段器（安装到 <用
 install-cangjie.py            仓颉增强：安装分段器，生成修正重码次序的词库，把反查改成小鹤双拼
 lua/typeduck_gloss.lua        粤拼：释义过滤器模块（安装到 <用户目录>/lua/）
 install-jyutping.py           粤拼：安装 TypeDuck 方案、改写配置，并生成释义索引
+german_input/deutsch.schema.yaml  德语输入：方案文件
+tools/build_dewiktionary.py   德语输入：生成词库 deutsch.dict.yaml 和释义 de_zh.tsv（不纳入版本库）
+lua/german_keys.lua           德语输入：空格上屏后补空格；大写字母开头
+lua/german_case.lua           德语输入：大写开头时把候选首字母大写
+install-german.py             德语输入：安装脚本
 tests/                        各部分的离线单元测试
 ```
 
@@ -199,6 +205,94 @@ python3 tests/test_install_jyutping.py
 - 索引在首次使用时整个读进内存，重新部署后重新读取。
 - 上游改了 `template.yaml` 的结构（找不到 `dictionary_lookup_filter` 或 `translator:`）时脚本会报错退出，而不是装出一个半改的方案。
 
+## 德语输入
+
+方案 `deutsch`（德语）：按德语单词的 ASCII 拼法输入，候选是德语词，注释是词性、语法信息和中文释义。
+
+```
+haus       →  1. Haus      das · 复数 Häuser · 房子、住房
+strasse    →  1. Straße    die · 复数 Straßen · 路
+sprechen   →  1. sprechen  动 不规则 · spricht, sprach, hat gesprochen · 说，讲; 说话，谈话; …
+reisen     →  1. reisen    动 · ist gereist · 旅行、旅游、观光、游玩
+muede      →  1. müde      形 · 累的; 无热情的，不振奋的; 困倦的
+mude       →  1. müde      （变音也可以直接打成不带点的字母）
+gut        →  1. gut       形 · besser, am besten · 良好的、合适的; …
+ging       →  1. ging      gehen 的过去式 · 走，步行
+haeuser    →  1. Häuser    Haus 的复数 · 房子、住房
+fuer       →  1. für       介 · （支配宾格）为了、为…; （支配宾格）代替; …
+strasse␣   →  Straße␣
+⇧ich␣gehe␣ →  Ich gehe␣
+```
+
+注释的格式：
+
+| 词 | 注释 |
+|---|---|
+| 名词 | `der`/`die`/`das`（两种性写作 `der/das`），`复数 …`（没有复数的不写），中文 |
+| 动词 | `动`；不规则动词（强变化、混合变化，以及过去式不是“词干 + te”的）写 `不规则 · 现在时第三人称单数（有变音时）, 过去式, 助动词 + 第二分词`；规则动词只在完成时用 `sein` 时写 `ist …` |
+| 形容词 | `形`；比较级不是“原形 + er”时写出比较级和最高级（`größer, am größten`） |
+| 其他 | `副` `介` `连` `代` `冠` `数` `叹` `小品` |
+| 变形 | `原形 的过去式`／`第二分词`／`现在时`／`第一虚拟式`／`复数`／`变格`／`比较级`…，再加原形的第一个中文义项；同形的两个原形用 ` / ` 隔开 |
+
+- **变音**：ä ö ü 打 `ae` `oe` `ue`，ß 打 `ss`；ä ö ü 也可以直接打 `a` `o` `u`（排在前一种拼法之后）。其他附加符号省略（Café 打 `cafe`）。方案里不需要 UltimateKEYS：Rime 正在输入时，AutoHotkey 用 `SendInput` 送出的 ü 进不了输入栏。不在 Rime 里打字的时候，UltimateKEYS 照常可用。
+- **补全**：打出前缀就列出以它开头的词，完全匹配的排在前面，再按词频排序（如 `krankenh` 出 Krankenhaus 医院、Krankenhäuser…）。
+- **学习**：选过的词以后排在前面（Rime 的用户词典，与其他方案相同）。
+- **空格**：用空格上屏后自动补一个空格，连续打词不用另按空格。用数字键选词、回车或标点上屏不补空格，所以 `haus,` 得到 `Haus,`。不想要：`german_keys/auto_space: false`。
+- **大写**：Shift + 字母开头（`⇧i` `ch`）时，候选首字母大写（Ich、Über），`essen`/`Essen` 合并成一个。词典本身的大小写照常保留（名词大写）。
+- **回车**：上屏输入的原文，用于词典里没有的词。
+- **标点**：不经过 Rime，先上屏当前候选，再原样输出标点。
+- 方案没有 punctuator、recognizer 和 key_binder：recognizer 的大写规则会抢走 Shift + 字母，默认按键绑定把 `-`、`=` 当作翻页键。
+- 中文释义用的是[德语释义](#德语释义)的过滤器 `german_gloss.lua`，按名空间 `de_zh` 配置：完整词典是生成的 `german_input/de_zh.tsv`，用户词典是 `german_input/de_zh.user.tsv`（安装时建一个只有注释的空文件，以后不覆盖），格式相同，里面的条目优先。注释长度上限 `de_zh/max_length` 为 100 个字符。
+
+### 词库
+
+```sh
+python3 tools/build_dewiktionary.py      # 下载四个来源（约 520 MB），生成 german_input/ 下两个文件，约两分钟
+python3 tools/build_dewiktionary.py --source de-wiktextract.jsonl.gz --zh-source zh-wiktextract.jsonl.gz \
+    --handedict handedict.u8 --frequency de_50k.txt --essay <Weasel>/data/essay.txt   # 用已下载的文件
+```
+
+| 来源 | 用途 | 许可 |
+|---|---|---|
+| [德语维基词典](https://de.wiktionary.org/)（[kaikki.org](https://kaikki.org/dewiktionary/rawdata.html) 的 wiktextract 数据） | 词表、性、复数、变位（现在时、过去式、第二分词、助动词）、比较级、变形及其原形、部分中文翻译 | CC BY-SA |
+| [中文维基词典](https://zh.wiktionary.org/)（[kaikki.org](https://kaikki.org/zhwiktionary/rawdata.html)） | 约 9 万个德语词的中文释义，优先使用 | CC BY-SA |
+| [HanDeDict](https://handedict.zydeo.net/) 反查 | 两个维基词典都没有中文的词 | CC BY-SA 2.0 |
+| [FrequencyWords](https://github.com/hermitdave/FrequencyWords) `de_50k.txt` | 词频排序 | CC BY-SA 4.0 |
+| Rime 的 `essay.txt`（可选） | HanDeDict 反查时给中文词排序 | LGPL |
+
+- 中文的取法：中文维基词典有这个词时，取它的前 3 个义项（去掉 ASCII 括号里的用法说明、发音行和 `v.` 之类的词性前缀），德语维基词典的中文翻译里义项没有覆盖的再补 1 个；没有时，用德语维基词典的中文翻译和 HanDeDict 反查，最多 4 个。HanDeDict 反查：把每个中文词条的德语义项拆开，取只有一个词的义项（去掉冠词和括号），按 `essay.txt` 的字频和义项位置给中文排序。专名的翻译排在最后（Essen 先出“饭、食品”再出“埃森”）。繁体字按 HanDeDict 的单字繁简对照转成简体（“事”这类本身也是简体的字不转）。
+- 词性和语法信息取自德语维基词典该词的第一个给出这些信息的词条。不规则动词按过去式判断：过去式不是“词干 + te / ete”（可分动词先去掉前缀），或维基词典标了不规则。
+- 排序：词频（不分大小写）优先，同频时有中文的原形在前、变形在后，小写的原形在大写的同形词前（`gehen` 在 `Gehen` 前）。
+- `deutsch.dict.yaml` 约 110 万行（32 MB），首次部署编译约 12 秒。`de_zh.tsv` 约 48 万条（28 MB）：原形不管有没有中文都写（名词至少有性和复数）；变形只在原形有中文时写，其余变形能打出来但没有注释。
+- `de_zh.tsv` 按键排好序，文件头有一行 `# sorted`，过滤器整个读成一个字符串后二分查找，不拆成 Lua 表（见[德语释义](#德语释义)的“已知限制”）。首次切到方案约 0.4 秒，每次按键的查询耗时可以忽略。
+- `--no-forms` 不收变位变格形式（只是变形、不是独立词条的词）。
+- 生成的两个文件受 CC BY-SA 约束；再分发时需署名上述来源并沿用相同许可。
+
+### 安装（德语输入）
+
+```sh
+python3 install-german.py        # Windows 上命令是 python
+```
+
+把方案、词库、释义和三个 Lua 文件装到所有已存在的用户目录（目录检测与 `install-cangjie.py` 相同，`--dir DIR` 指定）。词库和释义取自 `german_input/`（`--built DIR` 指定），没有时提示先运行生成脚本。用户目录里已有不是本仓库生成的同名方案、词库或释义文件时不覆盖，除非加 `--force`；Lua 文件总是覆盖。之后在 `default.custom.yaml` 的 `schema_list` 里加上 `- schema: deutsch`（脚本不改这个文件，只提示），再[重新部署](#重新部署)。
+
+### 测试（德语输入）
+
+```sh
+python3 tests/test_build_dewiktionary.py
+python3 tests/test_install_german.py
+lua tests/test_german_keys.lua
+```
+
+都是离线单元测试。真实行为另用 Weasel 0.17.4 自带的 rime.dll（librime 1.13.1）通过 C API 在临时用户目录里模拟按键验证过（上面的例子，以及 `haus,`、`xyzq` + 回车），该验证脚本不在仓库里。
+
+### 已知限制（德语输入）
+
+- 只有词典里有的词才有释义；中文维基词典没有的词用 HanDeDict 反查，是机器拆分，个别释义不准。中文维基词典的个别释义带英语或格式残留（如 Abort 的 `〈阳〉 pl.Aborte ①厕所 toilet`）。
+- 语法信息只取第一个词条：同形不同性的名词（der/die See）合成 `der/die`，但两个词条的中文不分开。
+- 输入码只有小写字母，大写只看第一个字母；全大写缩写按词典的写法出。
+- 复合词不拆分：词典里没有的长复合词没有释义。
+
 ## 德语释义
 
 通过 librime-lua 的 `lua_filter`，在候选词注释（comment）中追加离线中德词典的德语释义。适用于 Windows（Weasel）与 Linux（fcitx5-rime / ibus-rime）。
@@ -320,7 +414,7 @@ patch:
 ```yaml
 patch:
   german_gloss/base_dictionary: german_gloss/handedict.tsv
-  german_gloss/max_length: 60
+  german_gloss/max_length: 100
 ```
 
 配置键前缀为过滤器的 name space：`lua_filter@*german_gloss` 对应 `german_gloss`；若写成 `lua_filter@*german_gloss@de`，则对应 `de/dictionary`。
@@ -376,13 +470,13 @@ UTF-8 文本，每行 `中文<TAB>德语释义`：
 lua tests/test_german_gloss.lua
 ```
 
-测试以 mock 对象模拟 librime-lua 的 `Candidate`、`ShadowCandidate`、`Opencc`、`rime_api`、`yield`，覆盖：简繁归一（繁体候选、繁体词典键、精确优先、关闭与缺失配置）、四个词条载入、空注释/已有注释/Shadow 候选/Sentence 候选/未命中、分段输入（与前面各段连成词、最长优先、不相邻的段、取不到 composition）、BOM/CRLF/重复键解析、自定义词典路径与 name space、词典缺失时的直通行为。该测试不等价于在真实 Weasel / fcitx5-rime / ibus-rime 中的端到端验证。
+测试以 mock 对象模拟 librime-lua 的 `Candidate`、`ShadowCandidate`、`Opencc`、`rime_api`、`yield`，覆盖：简繁归一（繁体候选、繁体词典键、精确优先、关闭与缺失配置）、四个词条载入、空注释/已有注释/Shadow 候选/Sentence 候选/未命中、分段输入（与前面各段连成词、最长优先、不相邻的段、取不到 composition）、BOM/CRLF/重复键解析、自定义词典路径与 name space、词典缺失时的直通行为、标了 `# sorted` 的词典（二分查找的首尾、前缀键、非 ASCII、CRLF、未命中，以及按文件头选择载入方式）。该测试不等价于在真实 Weasel / fcitx5-rime / ibus-rime 中的端到端验证。
 
 ### 已知限制（德语释义）
 
 - 仅匹配整个候选文本（含简繁归一）；句子候选（如「学校工作」）不会被拆分查询。分段输入只把前面各段和当前候选连起来查，词典里没有这个词时（如 HanDeDict 没收「轻度」）显示的仍是单字释义。
 - Windows 下用户目录路径含非 ASCII 字符时，Lua `io.open` 依赖 librime 返回的本地编码路径；未在此类环境中验证。
-- 词典在首次使用时完整载入内存，之后各会话与方案共用，重新部署后重新载入；完整词典约 12 MB，首次载入会有短暂停顿。
+- 词典在首次使用时完整载入内存，之后各会话与方案共用，重新部署后重新载入。文件头有 `# sorted` 一行的词典（`tools/` 下两个脚本生成的都有）整个读成一个字符串，按键时二分查找：拆成几十万项的 Lua 表时，垃圾回收每轮都要遍历它，每次按键会慢几十毫秒（在 rime.dll 上实测 26 万条的 HanDeDict 每键 0.07–0.09 秒，改后可以忽略；首次载入从 3.4 秒降到 0.3 秒）。旧版脚本生成的 `handedict.tsv` 没有这一行，重新运行 `tools/build_handedict.py` 再安装即可。标了 `# sorted` 的文件必须按字节序排好、键不重复、头部之后没有注释，否则会查不到；手写的用户词典不要加这一行。
 
 ## 重新部署
 
@@ -395,5 +489,7 @@ lua tests/test_german_gloss.lua
 验证德语释义：输入 `xuexiao`（全拼）或 `xtxn`（小鹤双拼），候选「学校」后应显示 `die Schule`。
 
 验证粤拼：切到「粵語拼音」方案输入 `hoenggong`，候选「香港」后应显示 `hoeng1 gong2  (n) Hong Kong`。
+
+验证德语输入：切到「德语」方案输入 `muede`，候选「müde」后应显示 `累; 困; 倦; 疲劳`。
 
 验证仓颉增强：`vmpi;dl` 出 约束；没打过 欠 的情况下 `no` 首选是 欠；`` `ulpb `` 出 雙拼，输入栏显示的仍是 `ulpb`。
