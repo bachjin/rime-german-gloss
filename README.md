@@ -241,7 +241,20 @@ strasse␣   →  Straße␣
 - **大写**：Shift + 字母开头（`⇧i` `ch`）时，候选首字母大写（Ich、Über），`essen`/`Essen` 合并成一个。词典本身的大小写照常保留（名词大写）。
 - **回车**：上屏输入的原文，用于词典里没有的词。
 - **标点**：不经过 Rime，先上屏当前候选，再原样输出标点。
-- 方案没有 punctuator、recognizer 和 key_binder：recognizer 的大写规则会抢走 Shift + 字母，默认按键绑定把 `-`、`=` 当作翻页键。
+- 方案没有 punctuator 和 recognizer：recognizer 的大写规则会抢走 Shift + 字母。key_binder 不沿用默认按键绑定（默认把 `-`、`=` 当作翻页键），只有 Ctrl+Shift+1（下一个方案）和 Ctrl+Shift+2（中西文）。
+- **切换方案的快捷键**：例如 Ctrl+Shift+D 德语、Ctrl+Shift+N 日语、Ctrl+Shift+H 仓颉。每个方案都要有这几条绑定，因为按键时生效的是当前方案的 key_binder：
+  ```yaml
+  # default.custom.yaml（导入默认绑定的方案，如 cangjie5、luna_pinyin）、deutsch.custom.yaml、japanese.custom.yaml 各加一份
+  patch:
+    key_binder/bindings/+:
+      - {accept: "Control+Shift+d", select: deutsch, when: always}
+      - {accept: "Control+Shift+D", select: deutsch, when: always}
+      - {accept: "Control+Shift+n", select: japanese, when: always}
+      - {accept: "Control+Shift+N", select: japanese, when: always}
+      - {accept: "Control+Shift+h", select: cangjie5, when: always}
+      - {accept: "Control+Shift+H", select: cangjie5, when: always}
+  ```
+  `when: always` 在中西文模式下都生效，会盖过程序自己的同名快捷键（如 VS Code 的 Ctrl+Shift+D 调试视图）。
 - 中文释义用的是[德语释义](#德语释义)的过滤器 `german_gloss.lua`，按名空间 `de_zh` 配置：完整词典是生成的 `german_input/de_zh.tsv`，用户词典是 `german_input/de_zh.user.tsv`（安装时建一个只有注释的空文件，以后不覆盖），格式相同，里面的条目优先。注释长度上限 `de_zh/max_length` 为 100 个字符。
 
 ### 词库
