@@ -42,20 +42,23 @@ class InstallTest(unittest.TestCase):
         self.assertTrue((self.user / "lua" / "german_gloss.lua").is_file())
         self.assertIn("die Schule", self.read("german_gloss/zh_de.tsv"))
         self.assertIn("l'école", self.read("french_gloss/zh_fr.tsv"))
+        self.assertIn("学校(がっこう)", self.read("japanese_gloss/zh_ja.tsv"))
 
     def test_creates_patch(self):
         self.run_script("--schema", "cangjie5,luna_pinyin_simp")
         for schema in ("cangjie5", "luna_pinyin_simp"):
             text = self.read(schema + ".custom.yaml")
             self.assertTrue(text.startswith(ig.MARKER + "\npatch:\n"))
-            self.assertIn("  switches/@next: {options: [gloss_de, gloss_fr, gloss_none], "
-                          "states: [德译, 法译, 无译]}\n", text)
+            self.assertIn("  switches/@next: {options: [gloss_de, gloss_fr, gloss_ja, gloss_none], "
+                          "states: [德译, 法译, 日译, 无译]}\n", text)
             self.assertIn("  engine/filters/+: [lua_filter@*german_gloss, "
-                          "lua_filter@*german_gloss@french_gloss]\n", text)
+                          "lua_filter@*german_gloss@french_gloss, "
+                          "lua_filter@*german_gloss@japanese_gloss]\n", text)
             self.assertIn("  german_gloss/option: gloss_de\n", text)
             self.assertIn("  french_gloss/base_dictionary: french_gloss/cfdict.tsv\n", text)
+            self.assertIn("  japanese_gloss/base_dictionary: japanese_gloss/jawiktionary.tsv\n", text)
             self.assertNotIn("german_gloss/dictionary", text)
-        self.assertIn("switcher/save_options/+: [gloss_de, gloss_fr, gloss_none]",
+        self.assertIn("switcher/save_options/+: [gloss_de, gloss_fr, gloss_ja, gloss_none]",
                       self.read("default.custom.yaml"))
 
     def test_single_language(self):
@@ -85,6 +88,28 @@ class InstallTest(unittest.TestCase):
         before = text
         self.assertIn("unchanged", self.run_script("--schema", "cangjie5"))
         self.assertEqual(self.read("cangjie5.custom.yaml"), before)
+
+    def test_adds_new_language_to_generated_file(self):
+        self.run_script("--language", "de,fr", "--schema", "cangjie5")
+        self.run_script("--schema", "cangjie5")
+        text = self.read("cangjie5.custom.yaml")
+        self.assertIn("options: [gloss_de, gloss_fr, gloss_ja, gloss_none]", text)
+        self.assertEqual(text.count("switches/@next"), 1)
+        self.assertEqual(text.count("engine/filters/+"), 1)
+        self.assertEqual(text.count("french_gloss/option"), 1)
+        self.assertIn("japanese_gloss/option: gloss_ja", text)
+        self.assertIn("unchanged", self.run_script("--schema", "cangjie5"))
+
+    def test_foreign_file_with_older_switch(self):
+        own = ("patch:\n  switches/@next: {options: [gloss_de, gloss_fr, gloss_none], "
+               "states: [德译, 法译, 无译]}\n  french_gloss/option: gloss_fr\n")
+        (self.user / "cangjie5.custom.yaml").write_text(own, encoding="utf-8")
+        out = self.run_script("--schema", "cangjie5")
+        self.assertEqual(self.read("cangjie5.custom.yaml"), own)
+        self.assertIn("japanese_gloss/option: gloss_ja", out)
+        stale = out.split("remove its lines\n")[1]
+        self.assertTrue(stale.startswith("      switches/@next: {options: [gloss_de, gloss_fr, gloss_none]"))
+        self.assertNotIn("french_gloss/option", stale)  # still wanted, so not stale
 
     def test_foreign_file_kept(self):
         own = "patch:\n  engine/filters/@next: lua_filter@*german_gloss\n"

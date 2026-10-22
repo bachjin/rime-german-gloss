@@ -4,7 +4,7 @@
 
 | 定制 | 作用 | 安装脚本 |
 |---|---|---|
-| [德语/法语释义](#德语法语释义) | 在中文候选的注释里追加离线词典的德语或法语释义，Ctrl+`` ` `` 选单里切换语言，任何方案可用 | `install-gloss.py` |
+| [德语/法语/日语释义](#德语法语日语释义) | 在中文候选的注释里追加离线词典的德语、法语或日语释义，Ctrl+`` ` `` 选单里切换语言，任何方案可用 | `install-gloss.py` |
 | [仓颉增强](#仓颉增强) | `cangjie5`：分号分隔全码输入；重码首选按仓颉次序而不是字频；`` ` `` 反查改用小鹤双拼 | `install-cangjie.py` |
 | [粤拼（TypeDuck）](#粤拼typeduck) | 在原版 librime 上安装 TypeDuck 的 `jyut6ping3` 方案；候选词显示带声调的粤拼和英语等释义 | `install-jyutping.py` |
 | [德语输入](#德语输入) | 新方案 `deutsch`：用 ASCII 打德语（`muede` 出 müde），候选显示中文释义 | `install-german.py` |
@@ -14,14 +14,17 @@
 ## 文件结构
 
 ```
-lua/german_gloss.lua          德语/法语释义：过滤器模块，每种语言挂一个实例（安装到 <用户目录>/lua/）
+lua/german_gloss.lua          德语/法语/日语释义：过滤器模块，每种语言挂一个实例（安装到 <用户目录>/lua/）
 german_gloss/zh_de.tsv        德语释义：用户词典，初始为 4 条示例（安装到 <用户目录>/german_gloss/）
 german_gloss/handedict.tsv    德语释义：完整词典，由下面的脚本生成，不纳入版本库
 tools/build_handedict.py      德语释义：从 HanDeDict 生成 handedict.tsv
 french_gloss/zh_fr.tsv        法语释义：用户词典，初始为 4 条示例（安装到 <用户目录>/french_gloss/）
 french_gloss/cfdict.tsv       法语释义：完整词典，由下面的脚本生成，不纳入版本库
 tools/build_cfdict.py         法语释义：从 CFDICT 生成 cfdict.tsv
-install-gloss.py              德语/法语释义：安装脚本（Windows / Linux）
+japanese_gloss/zh_ja.tsv      日语释义：用户词典，初始为 4 条示例（安装到 <用户目录>/japanese_gloss/）
+japanese_gloss/jawiktionary.tsv  日语释义：完整词典，由下面的脚本生成，不纳入版本库
+tools/build_jawiktionary.py   日语释义：从日语、中文维基词典生成 jawiktionary.tsv
+install-gloss.py              德语/法语/日语释义：安装脚本（Windows / Linux）
 lua/delimited_code.lua        仓颉增强：分隔符分段器（安装到 <用户目录>/lua/）
 install-cangjie.py            仓颉增强：安装分段器，生成修正重码次序的词库，把反查改成小鹤双拼
 lua/typeduck_gloss.lua        粤拼：释义过滤器模块（安装到 <用户目录>/lua/）
@@ -58,7 +61,7 @@ xykq;dl   →  撉束        （x 开头的编码照常整码命中）
 orgrc;dl  →  倉頡束      （一段也可以是词组的五码短码）
 ```
 
-- 空格上屏整串，各段取自己的首选。候选栏显示的是**最后一段**的候选（装了[德语/法语释义](#德语法语释义)时，候选的释义按和前面各段连成的词查：`vmpi;dl` 的「束」显示 `约束: zügeln (V)`）；要改前面的段，按 `←` 把光标移过去再选，选完后自动回到下一段。`Esc` 先删掉最后一段。
+- 空格上屏整串，各段取自己的首选。候选栏显示的是**最后一段**的候选（装了[德语/法语/日语释义](#德语法语日语释义)时，候选的释义按和前面各段连成的词查：`vmpi;dl` 的「束」显示 `约束: zügeln (V)`）；要改前面的段，按 `←` 把光标移过去再选，选完后自动回到下一段。`Esc` 先删掉最后一段。
 - 学习行为由原方案决定，与不分隔时一致：`cangjie5` 上屏后会记下各段的字并自动造词，之后不加分号打 `vmpidl`、或打短码 `vidl` 都能出 约束。
 - 没有分隔符的输入完全不受影响。分隔符与字母表取自方案的 `speller/delimiter`、`speller/alphabet`。
 - 某段的整码查不到任何词条时，该段退回原方案的造句。
@@ -257,7 +260,7 @@ strasse␣   →  Straße␣
       - {accept: "Control+Shift+H", select: cangjie5, when: always}
   ```
   `when: always` 在中西文模式下都生效，会盖过程序自己的同名快捷键（如 VS Code 的 Ctrl+Shift+D 调试视图）。
-- 中文释义用的是[德语/法语释义](#德语法语释义)的过滤器 `german_gloss.lua`，按名空间 `de_zh` 配置：完整词典是生成的 `german_input/de_zh.tsv`，用户词典是 `german_input/de_zh.user.tsv`（安装时建一个只有注释的空文件，以后不覆盖），格式相同，里面的条目优先。注释长度上限 `de_zh/max_length` 为 100 个字符。
+- 中文释义用的是[德语/法语/日语释义](#德语法语日语释义)的过滤器 `german_gloss.lua`，按名空间 `de_zh` 配置：完整词典是生成的 `german_input/de_zh.tsv`，用户词典是 `german_input/de_zh.user.tsv`（安装时建一个只有注释的空文件，以后不覆盖），格式相同，里面的条目优先。注释长度上限 `de_zh/max_length` 为 100 个字符。
 
 ### 词库
 
@@ -279,7 +282,7 @@ python3 tools/build_dewiktionary.py --source de-wiktextract.jsonl.gz --zh-source
 - 词性和语法信息取自德语维基词典该词的第一个给出这些信息的词条。不规则动词按过去式判断：过去式不是“词干 + te / ete”（可分动词先去掉前缀），或维基词典标了不规则。
 - 排序：词频（不分大小写）优先，同频时有中文的原形在前、变形在后，小写的原形在大写的同形词前（`gehen` 在 `Gehen` 前）。
 - `deutsch.dict.yaml` 约 110 万行（32 MB），首次部署编译约 12 秒。`de_zh.tsv` 约 48 万条（28 MB）：原形不管有没有中文都写（名词至少有性和复数）；变形只在原形有中文时写，其余变形能打出来但没有注释。
-- `de_zh.tsv` 按键排好序，文件头有一行 `# sorted`，过滤器整个读成一个字符串后二分查找，不拆成 Lua 表（见[德语/法语释义](#德语法语释义)的“已知限制”）。首次切到方案约 0.4 秒，每次按键的查询耗时可以忽略。
+- `de_zh.tsv` 按键排好序，文件头有一行 `# sorted`，过滤器整个读成一个字符串后二分查找，不拆成 Lua 表（见[德语/法语/日语释义](#德语法语日语释义)的“已知限制”）。首次切到方案约 0.4 秒，每次按键的查询耗时可以忽略。
 - `--no-forms` 不收变位变格形式（只是变形、不是独立词条的词）。
 - 生成的两个文件受 CC BY-SA 约束；再分发时需署名上述来源并沿用相同许可。
 
@@ -308,14 +311,15 @@ lua tests/test_german_keys.lua
 - 输入码只有小写字母，大写只看第一个字母；全大写缩写按词典的写法出。
 - 复合词不拆分：词典里没有的长复合词没有释义。
 
-## 德语/法语释义
+## 德语/法语/日语释义
 
-通过 librime-lua 的 `lua_filter`，在中文候选词的注释（comment）中追加离线词典的德语或法语释义，在 Ctrl+`` ` ``（方案选单）里切换显示哪种语言。适用于 Windows（Weasel）与 Linux（fcitx5-rime / ibus-rime）。
+通过 librime-lua 的 `lua_filter`，在中文候选词的注释（comment）中追加离线词典的德语、法语或日语释义，在 Ctrl+`` ` ``（方案选单）里切换显示哪种语言。适用于 Windows（Weasel）与 Linux（fcitx5-rime / ibus-rime）。
 
 ```
 xuexiao →  1. 学校  die Schule        （德译）
 xuexiao →  1. 学校  l'école           （法译）
 mg      →  1. 王    roi; prince; régner sur; (nom de famille)    （仓颉，法译）
+gongzuo →  1. 工作  働(はたら)く; 仕事; 職業   （日译）
 ```
 
 ```sh
@@ -323,7 +327,7 @@ python3 install-gloss.py --schema cangjie5,luna_pinyin_simp   # Windows 上命�
 python3 install-gloss.py                                       # 不带 --schema：列出官方中文方案
 ```
 
-两种语言用的是同一个过滤器 `german_gloss.lua`：德语实例是 `lua_filter@*german_gloss`（配置在 `german_gloss/` 下），法语实例按 name space 另挂一个 `lua_filter@*german_gloss@french_gloss`（配置在 `french_gloss/` 下）。下文的行为、词典格式和选项对两者都适用，只是键名前缀不同。
+三种语言用的是同一个过滤器 `german_gloss.lua`：德语实例是 `lua_filter@*german_gloss`（配置在 `german_gloss/` 下），法语、日语实例按 name space 另挂 `lua_filter@*german_gloss@french_gloss`、`lua_filter@*german_gloss@japanese_gloss`（配置在 `french_gloss/`、`japanese_gloss/` 下）。下文的行为、词典格式和选项对各语言都适用，只是键名前缀不同。
 
 ### 行为定义
 
@@ -367,35 +371,54 @@ python3 tools/build_cfdict.py --source cfdict.u8    # 或使用已下载的文�
 - CFDICT 有些行用多个空格或 TAB 分隔字段，脚本都能识别。
 - 生成的文件受 CC BY-SA 3.0 约束；再分发时需署名 CFDICT（https://chine.in）并沿用相同许可。
 
+### 日语词典（维基词典）
+
+没有像 HanDeDict、CFDICT 这样开放许可的汉日词典，日语释义取自维基词典（CC BY-SA 4.0），用 [kaikki.org](https://kaikki.org/) 的 wiktextract 数据：
+
+```sh
+python3 tools/build_jawiktionary.py         # 下载约 300 MB，生成 japanese_gloss/jawiktionary.tsv（2.3 MB）
+python3 tools/build_jawiktionary.py --source ja.jsonl.gz --zh-source zh.jsonl.gz   # 或使用已下载的文件
+```
+
+- 主要来源是日语维基词典的“中国語”词条（约 4.2 万个词），释义是日语，例如 走 → `歩(ある)く; 行(い)く`、电脑 → `コンピュータ、電子計算機`。词条里标了读音（ruby）的汉字，在后面用括号写出假名。
+- 日语维基词典没有的词，用中文维基词典词条里的日语翻译补上（约 7 500 个词），例如 `仕事(しごと)、労働(ろうどう)`。
+- 按 2026-10-20 的数据生成约 5.3 万个词头。词条给出繁简两种写法时两种词头各写一份；只有一种写法的，按从其他词条学到的繁简字对照逐字转出简体词头（「乾」这类简体里也用的字不转）。
+- 去掉 `（日本語に同じ）` 之类的说明；ASCII 括号里的说明改成全角括号，免得同一释义因括号不同出现两次；被另一条释义包含的释义（`飛行機` 与 `飛行機、航空機`）只留长的。专名（`中国人の姓…`）排在最后。
+- 维基词典的释义详略不一，有的词只给一个同形的日语词（学校 → `学校`），有的是一句说明。词典里没有的词不显示释义。
+- 生成的文件受 CC BY-SA 4.0 约束；再分发时需署名维基词典并沿用相同许可。
+
 ### 切换释义语言（Ctrl+`` ` ``）
 
-安装脚本给每个方案加一组单选开关和两个过滤器：
+安装脚本给每个方案加一组单选开关和三个过滤器：
 
 ```yaml
 patch:
-  switches/@next: {options: [gloss_de, gloss_fr, gloss_none], states: [德译, 法译, 无译]}
-  engine/filters/+: [lua_filter@*german_gloss, lua_filter@*german_gloss@french_gloss]
+  switches/@next: {options: [gloss_de, gloss_fr, gloss_ja, gloss_none], states: [德译, 法译, 日译, 无译]}
+  engine/filters/+: [lua_filter@*german_gloss, lua_filter@*german_gloss@french_gloss, lua_filter@*german_gloss@japanese_gloss]
   german_gloss/option: gloss_de
   french_gloss/option: gloss_fr
   french_gloss/dictionary: french_gloss/zh_fr.tsv
   french_gloss/base_dictionary: french_gloss/cfdict.tsv
+  japanese_gloss/option: gloss_ja
+  japanese_gloss/dictionary: japanese_gloss/zh_ja.tsv
+  japanese_gloss/base_dictionary: japanese_gloss/jawiktionary.tsv
 ```
 
 `default.custom.yaml` 里再加一行，让选过的语言在重启后保留：
 
 ```yaml
 patch:
-  switcher/save_options/+: [gloss_de, gloss_fr, gloss_none]
+  switcher/save_options/+: [gloss_de, gloss_fr, gloss_ja, gloss_none]
 ```
 
-- 按 Ctrl+`` ` `` 打开方案选单，当前方案的开关折叠在一行里（`中／半／漢／常／。／德`）。选这一行展开，再选「法译」或「无译」。
+- 按 Ctrl+`` ` `` 打开方案选单，当前方案的开关折叠在一行里（`中／半／漢／常／。／德`）。选这一行展开，再选「法译」「日译」或「无译」。
 - `<ns>/option`：设了这个键的过滤器只在对应选项打开时加词典释义，关着时候选原样通过。没设时一直显示（旧的安装方式不受影响）。
-- 开关**没有**写 `reset`：librime 每次载入方案都会按 `reset` 重设选项，盖掉 `save_options` 保存的选择。没有 `reset` 时，第一次使用的三个选项都是关的；过滤器把“同组选项都没打开”当作第一个选项打开，和选单显示的一致，所以默认显示德语。`--language fr,de` 让法语排第一、做默认。
-- 某种语言的词典要等第一次切到这种语言时才读进内存，一直用德语的话法语词典不会载入。
+- 开关**没有**写 `reset`：librime 每次载入方案都会按 `reset` 重设选项，盖掉 `save_options` 保存的选择。没有 `reset` 时，第一次使用的各个选项都是关的；过滤器把“同组选项都没打开”当作第一个选项打开，和选单显示的一致，所以默认显示德语。`--language fr,de` 让法语排第一、做默认。
+- 某种语言的词典要等第一次切到这种语言时才读进内存，一直用德语的话法语、日语词典不会载入。
 - 开关和过滤器写在各个方案里，选项状态在一个会话里各方案共用：在仓颉里切成法语，切到拼音也是法语。
-- 不用安装脚本时，按上面的补丁手动写进 `<schema>.custom.yaml`。只要一种语言：去掉另一种语言的过滤器和配置，开关只留 `[gloss_de, gloss_none]`。
+- 不用安装脚本时，按上面的补丁手动写进 `<schema>.custom.yaml`。只要部分语言：去掉其他语言的过滤器和配置，开关里也去掉对应的选项，如只留 `[gloss_de, gloss_none]`。
 
-### 前提条件（德语/法语释义）
+### 前提条件（德语/法语/日语释义）
 
 前端需内置 librime-lua，且支持 `lua_filter@*模块名` 形式（自动 `require` 用户目录 `lua/` 下的模块）。
 
@@ -404,22 +427,22 @@ patch:
 
 若所用 librime-lua 版本过旧、不支持 `*` 语法，见下文“旧版 librime-lua 兼容写法”。
 
-### 安装（德语/法语释义）
+### 安装（德语/法语/日语释义）
 
 ```sh
-python3 install-gloss.py --schema cangjie5,luna_pinyin_simp            # 德语、法语都装
+python3 install-gloss.py --schema cangjie5,luna_pinyin_simp            # 德语、法语、日语都装
 python3 install-gloss.py --language fr --schema luna_pinyin --deploy   # 只装法语，装完部署（Weasel）
 python3 install-gloss.py                                               # 只装文件，列出可选的方案
 ```
 
-只需要 Python 3，不依赖其他包。先运行 `tools/build_handedict.py`、`tools/build_cfdict.py` 生成完整词典；没有生成的话只装 4 条示例词条。
+只需要 Python 3，不依赖其他包。先运行 `tools/build_handedict.py`、`tools/build_cfdict.py`、`tools/build_jawiktionary.py` 生成完整词典；没有生成的话只装 4 条示例词条。
 
 | 选项 | 作用 |
 |---|---|
 | `--schema ID,ID` | 给哪些中文方案启用释义，可重复 |
-| `--language de,fr` | 装哪几种语言，默认 `de,fr`；第一个是默认显示的语言 |
+| `--language de,fr,ja` | 装哪几种语言，默认 `de,fr,ja`；第一个是默认显示的语言 |
 | `--dir DIR` | 用户目录，可重复；默认是所有已存在的用户目录 |
-| `--force` | 覆盖已修改过的 `zh_de.tsv` / `zh_fr.tsv` |
+| `--force` | 覆盖已修改过的 `zh_de.tsv` / `zh_fr.tsv` / `zh_ja.tsv` |
 | `--deploy` | 装完运行 `WeaselDeployer.exe /deploy`（Windows） |
 
 不带 `--schema` 时照样安装词典和 Lua 文件，但不启用，然后列出 [plum](https://github.com/rime/plum) 各个包里的中文方案（朙月拼音、地球拼音、注音、各种双拼、粤拼、仓颉、速成、五笔、行列……），标出 `[installed]`（用户目录或共享目录里有这个方案）和 `[enabled]`（在 `schema_list` 里），不在官方列表里的已启用方案另列一行：
@@ -444,13 +467,13 @@ python3 install-gloss.py                                               # 只装�
 
 安装脚本的行为：
 
-- `lua/german_gloss.lua` 总是覆盖安装；`handedict.tsv` / `cfdict.tsv` 存在时一并安装（总是覆盖）。
-- `zh_de.tsv` / `zh_fr.tsv` 若已存在且内容不同（视为用户已修改），保留原文件，新版本写为 `.new`；`--force` 强制覆盖。
+- `lua/german_gloss.lua` 总是覆盖安装；`handedict.tsv` / `cfdict.tsv` / `jawiktionary.tsv` 存在时一并安装（总是覆盖）。
+- `zh_de.tsv` / `zh_fr.tsv` / `zh_ja.tsv` 若已存在且内容不同（视为用户已修改），保留原文件，新版本写为 `.new`；`--force` 强制覆盖。
 - 对每个 `--schema` 指定的方案，以及 `default.custom.yaml`（`save_options` 那一行）：
   - 文件不存在 → 创建并写入补丁；
-  - 已经有 `gloss_none` → 不改动；
-  - 本仓库脚本生成的（首行为 `# generated by rime-german-gloss`）→ 追加补丁，并去掉旧版安装脚本写的 `engine/filters/@next: lua_filter@*german_gloss`；
-  - 其他情况 → **不改动**，打印需手动添加的补丁行（避免破坏用户已有 YAML）。Weasel 自己写的 `default.custom.yaml` 属于这种情况。
+  - 补丁行都已在、也没有多余的旧补丁行 → 不改动；
+  - 本仓库脚本生成的（首行为 `# generated by rime-german-gloss`）→ 去掉旧版脚本写的释义补丁行（旧的开关、过滤器、`*_gloss/` 配置，以及更早的 `engine/filters/@next: lua_filter@*german_gloss`），再追加新补丁。所以给旧安装加上日语，重新运行一次安装脚本即可；
+  - 其他情况 → **不改动**，打印需手动添加的补丁行和需要删掉的旧行（避免破坏用户已有 YAML）。Weasel 自己写的 `default.custom.yaml` 属于这种情况。
 
 ### 只要德语、不要开关
 
@@ -531,21 +554,22 @@ UTF-8 文本，每行 `中文<TAB>德语释义`：
 - 允许 UTF-8 BOM 与 CRLF 换行（Windows 编辑器保存的文件可直接使用）。
 - 同一键出现多次时，按文件顺序以 `; ` 连接（完全重复的释义去重），例如 `die Schule; die Hochschule`。
 
-### 测试（德语/法语释义）
+### 测试（德语/法语/日语释义）
 
 需要本地 Lua 解释器（已在 Lua 5.1、5.4 与 5.5 下验证）：
 
 ```sh
 lua tests/test_german_gloss.lua
 python3 tests/test_build_cfdict.py
+python3 tests/test_build_jawiktionary.py
 python3 tests/test_install_gloss.py
 ```
 
-测试以 mock 对象模拟 librime-lua 的 `Candidate`、`ShadowCandidate`、`Opencc`、`rime_api`、`yield`，覆盖：简繁归一（繁体候选、繁体词典键、精确优先、关闭与缺失配置）、四个词条载入、空注释/已有注释/Shadow 候选/Sentence 候选/未命中、分段输入（与前面各段连成词、最长优先、不相邻的段、取不到 composition）、BOM/CRLF/重复键解析、自定义词典路径与 name space、词典缺失时的直通行为、标了 `# sorted` 的词典（二分查找的首尾、前缀键、非 ASCII、CRLF、未命中，以及按文件头选择载入方式）、`option` 开关（同组都没打开时第一个算打开、关着时原样通过且不载入词典、法语实例读自己的词典）。另外两个是 CFDICT 生成脚本和安装脚本的离线测试。
+测试以 mock 对象模拟 librime-lua 的 `Candidate`、`ShadowCandidate`、`Opencc`、`rime_api`、`yield`，覆盖：简繁归一（繁体候选、繁体词典键、精确优先、关闭与缺失配置）、四个词条载入、空注释/已有注释/Shadow 候选/Sentence 候选/未命中、分段输入（与前面各段连成词、最长优先、不相邻的段、取不到 composition）、BOM/CRLF/重复键解析、自定义词典路径与 name space、词典缺失时的直通行为、标了 `# sorted` 的词典（二分查找的首尾、前缀键、非 ASCII、CRLF、未命中，以及按文件头选择载入方式）、`option` 开关（同组都没打开时第一个算打开、关着时原样通过且不载入词典、法语实例读自己的词典）。另外三个是 CFDICT、日语维基词典生成脚本和安装脚本的离线测试。
 
 切换语言另用 Weasel 0.17.4 自带的 rime.dll（librime 1.13.1）通过 C API 在临时用户目录里验证过：用 `install-gloss.py` 装好、部署，`luna_pinyin_simp` 打 `xuexiao`、`cangjie5` 打 `mg`，默认是德语；按 Ctrl+`` ` `` 在选单里选「法译」后两个方案都换成法语，「无译」时没有释义；重新初始化后仍是法语（`user.yaml` 里记下了 `gloss_fr: true`）。该验证脚本不在仓库里。
 
-### 已知限制（德语/法语释义）
+### 已知限制（德语/法语/日语释义）
 
 - 仅匹配整个候选文本（含简繁归一）；句子候选（如「学校工作」）不会被拆分查询。分段输入只把前面各段和当前候选连起来查，词典里没有这个词时（如 HanDeDict 没收「轻度」）显示的仍是单字释义。
 - Windows 下用户目录路径含非 ASCII 字符时，Lua `io.open` 依赖 librime 返回的本地编码路径；未在此类环境中验证。
@@ -559,7 +583,7 @@ python3 tests/test_install_gloss.py
 - **fcitx5-rime**：托盘菜单 → Rime →「重新部署」（Deploy）。
 - **ibus-rime**：ibus 输入法菜单 →「部署」（Deploy）；或 `ibus restart`。
 
-验证德语/法语释义：输入 `xuexiao`（全拼）或 `xtxn`（小鹤双拼），候选「学校」后应显示 `die Schule`；按 Ctrl+`` ` `` 选「法译」后显示 `l'école`。
+验证德语/法语/日语释义：输入 `xuexiao`（全拼）或 `xtxn`（小鹤双拼），候选「学校」后应显示 `die Schule`；按 Ctrl+`` ` `` 选「法译」后显示 `l'école`，选「日译」后显示 `学校`。
 
 验证粤拼：切到「粵語拼音」方案输入 `hoenggong`，候选「香港」后应显示 `hoeng1 gong2  (n) Hong Kong`。
 

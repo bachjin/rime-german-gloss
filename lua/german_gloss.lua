@@ -19,6 +19,7 @@
 -- name space, e.g. French glosses (tools/build_cfdict.py) with
 --   engine/filters/+: [lua_filter@*german_gloss, lua_filter@*german_gloss@french_gloss]
 --   french_gloss: {dictionary: french_gloss/zh_fr.tsv, base_dictionary: french_gloss/cfdict.tsv}
+-- and Japanese ones (tools/build_jawiktionary.py) likewise under japanese_gloss.
 -- With `option` set, a filter only glosses while that option is on, so a
 -- radio switch (in the Ctrl+` menu) picks the language. Such a filter loads
 -- its dictionaries the first time its option is on, not with the schema.
