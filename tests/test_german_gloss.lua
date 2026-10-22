@@ -336,5 +336,54 @@ env12.gloss_conv = { convert = function() error("boom") end }
 check("lookup error passthrough",
   run_filter(gloss, env12, { Candidate("Phrase", "學", "x") })[1].comment == "x")
 
+-- 10. `option`: a radio switch picks the language; a filter whose option is
+--     off passes candidates through and has not loaded its dictionaries yet
+gloss.clear_cache()
+local options = {}
+local SWITCHES = {
+  { "ascii_mode" },
+  { "gloss_de", "gloss_fr", "gloss_none" },
+}
+local function option_env(name_space, extra)
+  local e = mock_env(nil, name_space, extra)
+  local config = e.engine.schema.config
+  local get_string = config.get_string
+  config.get_list_size = function(_, path)
+    if path == "switches" then return #SWITCHES end
+    local i = path:match("^switches/@(%d+)/options$")
+    return i and #SWITCHES[tonumber(i) + 1] or 0
+  end
+  config.get_string = function(self, key)
+    local i, j = key:match("^switches/@(%d+)/options/@(%d+)$")
+    if i then return SWITCHES[tonumber(i) + 1][tonumber(j) + 1] end
+    return get_string(self, key)
+  end
+  e.engine.context = { get_option = function(_, name) return options[name] == true end }
+  return e
+end
+local de = option_env("*german_gloss", { option = "gloss_de" })
+local fr = option_env("french_gloss", { option = "gloss_fr", dictionary = "french_gloss/zh_fr.tsv" })
+gloss.init(de)
+gloss.init(fr)
+check("option: not loaded at init", de.gloss_dict == nil and fr.gloss_dict == nil)
+check("option: radio group found", de.gloss_group and #de.gloss_group == 3)
+local both = function(cands)
+  return run_filter(gloss, fr, run_filter(gloss, de, cands))
+end
+-- nothing picked yet: the group's first option (German) counts as on
+check("option: first by default", both({ Candidate("Phrase", "学校", "") })[1].comment == " die Schule")
+check("option: French still not loaded", de.gloss_dict ~= nil and fr.gloss_dict == nil)
+options.gloss_de = true
+check("option: German on", both({ Candidate("Phrase", "学校", "") })[1].comment == " die Schule")
+options = { gloss_fr = true }
+check("option: French on", both({ Candidate("Phrase", "学校", "") })[1].comment == " l'école")
+options = { gloss_none = true }
+local none = both({ Candidate("Phrase", "学校", "~x") })
+check("option: none", none[1].comment == "~x" and #none == 1)
+local nocontext = mock_env(nil, nil, { option = "gloss_de" })
+gloss.init(nocontext)
+check("option: no context passes through",
+  run_filter(gloss, nocontext, { Candidate("Phrase", "学校", "") })[1].comment == "")
+
 print(string.format("%d/%d checks passed", total - failures, total))
 os.exit(failures == 0 and 0 or 1)

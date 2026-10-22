@@ -2,3 +2,4 @@ german_gloss/handedict.tsv
 __pycache__/
 german_input/deutsch.dict.yaml
 german_input/de_zh.tsv
+french_gloss/cfdict.tsv
