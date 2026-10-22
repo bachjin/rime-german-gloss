@@ -509,6 +509,21 @@ patch:
   german_gloss/max_length: 100
 ```
 
+可选：释义换行（默认 `wrap: 0` 不换行）。竖排候选栏里长释义会把整个候选窗撑得很宽；设了 `wrap` 后，释义按这个列数折成多行（汉字、假名等全角字符算 2 列），优先在 `; `、`, `、`、` 和空格处断开，第一行扣掉原有注释的宽度；`max_lines` 限制行数，超出的部分以 `…` 结尾（0 为不限）。配合 `menu/page_size` 减少每页候选，候选窗的总行数不会太多。例如仓颉每页 3 个候选、每种语言的释义最多 3 行，每行 30 列：
+
+```yaml
+patch:
+  menu/page_size: 3
+  german_gloss/wrap: 30
+  german_gloss/max_lines: 3
+  french_gloss/wrap: 30
+  french_gloss/max_lines: 3
+  japanese_gloss/wrap: 30
+  japanese_gloss/max_lines: 3
+```
+
+换行是在注释里插入换行符 `\n`，由前端负责显示成多行。
+
 配置键前缀为过滤器的 name space：`lua_filter@*german_gloss` 对应 `german_gloss`；若写成 `lua_filter@*german_gloss@de`，则对应 `de/dictionary`。
 
 #### 旧版 librime-lua 兼容写法
@@ -565,7 +580,7 @@ python3 tests/test_build_jawiktionary.py
 python3 tests/test_install_gloss.py
 ```
 
-测试以 mock 对象模拟 librime-lua 的 `Candidate`、`ShadowCandidate`、`Opencc`、`rime_api`、`yield`，覆盖：简繁归一（繁体候选、繁体词典键、精确优先、关闭与缺失配置）、四个词条载入、空注释/已有注释/Shadow 候选/Sentence 候选/未命中、分段输入（与前面各段连成词、最长优先、不相邻的段、取不到 composition）、BOM/CRLF/重复键解析、自定义词典路径与 name space、词典缺失时的直通行为、标了 `# sorted` 的词典（二分查找的首尾、前缀键、非 ASCII、CRLF、未命中，以及按文件头选择载入方式）、`option` 开关（同组都没打开时第一个算打开、关着时原样通过且不载入词典、法语实例读自己的词典）。另外三个是 CFDICT、日语维基词典生成脚本和安装脚本的离线测试。
+测试以 mock 对象模拟 librime-lua 的 `Candidate`、`ShadowCandidate`、`Opencc`、`rime_api`、`yield`，覆盖：简繁归一（繁体候选、繁体词典键、精确优先、关闭与缺失配置）、四个词条载入、空注释/已有注释/Shadow 候选/Sentence 候选/未命中、分段输入（与前面各段连成词、最长优先、不相邻的段、取不到 composition）、BOM/CRLF/重复键解析、自定义词典路径与 name space、词典缺失时的直通行为、标了 `# sorted` 的词典（二分查找的首尾、前缀键、非 ASCII、CRLF、未命中，以及按文件头选择载入方式）、`option` 开关（同组都没打开时第一个算打开、关着时原样通过且不载入词典、法语实例读自己的词典）、`wrap` / `max_lines` 换行（全角字符宽度、在分隔符处断开、过长片段逐字断开、扣掉原有注释的宽度、行数上限）。另外三个是 CFDICT、日语维基词典生成脚本和安装脚本的离线测试。
 
 切换语言另用 Weasel 0.17.4 自带的 rime.dll（librime 1.13.1）通过 C API 在临时用户目录里验证过：用 `install-gloss.py` 装好、部署，`luna_pinyin_simp` 打 `xuexiao`、`cangjie5` 打 `mg`，默认是德语；按 Ctrl+`` ` `` 在选单里选「法译」后两个方案都换成法语，「无译」时没有释义；重新初始化后仍是法语（`user.yaml` 里记下了 `gloss_fr: true`）。该验证脚本不在仓库里。
 

@@ -385,5 +385,25 @@ gloss.init(nocontext)
 check("option: no context passes through",
   run_filter(gloss, nocontext, { Candidate("Phrase", "学校", "") })[1].comment == "")
 
+-- 11. `wrap` / `max_lines`: long glosses break into lines at "; " etc.
+check("width: ASCII, CJK, kana, full-width, ellipsis",
+  gloss.width("ab") == 2 and gloss.width("学校") == 4 and gloss.width("がっこう") == 8
+    and gloss.width("（）") == 4 and gloss.width("…é") == 2)
+check("wrap off", gloss.wrap("a; b", 0) == "a; b" and gloss.wrap("a; b", nil) == "a; b")
+check("wrap short text unchanged", gloss.wrap("roi; prince", 20) == "roi; prince")
+check("wrap at separators", gloss.wrap("roi; prince; régner sur", 12) == "roi; prince;\nrégner sur")
+check("wrap CJK at 、", gloss.wrap("飛行機、航空機、ジェット機", 16) == "飛行機、航空機、\nジェット機")
+check("wrap cuts a long piece by character",
+  gloss.wrap("中国人の姓のひとつ", 8) == "中国人の\n姓のひと\nつ")
+check("wrap first line starts after the comment", gloss.wrap("roi; prince", 10, 0, 5) == "roi;\nprince")
+check("max_lines", gloss.wrap("a; b; c; d", 3, 2) == "a;\nb…")
+check("max_lines not reached", gloss.wrap("a; b", 3, 5) == "a;\nb")
+local wrapped = mock_env(nil, nil, { wrap = "10", max_lines = "2" })
+gloss.init(wrapped)
+local wout = run_filter(gloss, wrapped, {
+  Candidate("Phrase", "学校", ""), Candidate("Phrase", "工作", "〔x〕") })
+check("wrap in filter", wout[1].comment == " die\nSchule")
+check("wrap in filter after a comment", wout[2].comment == "〔x〕 die\nArbeit")
+
 print(string.format("%d/%d checks passed", total - failures, total))
 os.exit(failures == 0 and 0 or 1)
