@@ -163,10 +163,11 @@ def read_zh(lines):
     return translations, forms, pairs
 
 
-def char_map(pairs):
+def char_map(pairs, min_count=1):
     """{Traditional char: Simplified char} learnt from (traditional, simplified)
     word pairs. A character that also appears in Simplified words keeps its
-    form (乾 in 乾隆), and so does one whose pairs disagree more than agree."""
+    form (乾 in 乾隆), and so does one whose pairs disagree more than agree or
+    that has fewer than `min_count` pairs."""
     counts = collections.defaultdict(collections.Counter)
     simplified = set()
     for trad, simp in pairs:
@@ -177,7 +178,7 @@ def char_map(pairs):
     result = {}
     for t, c in counts.items():
         s, n = c.most_common(1)[0]
-        if s != t and t not in simplified and n * 2 > sum(c.values()):
+        if s != t and t not in simplified and n >= min_count and n * 2 > sum(c.values()):
             result[t] = s
     return result
 

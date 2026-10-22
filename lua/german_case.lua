@@ -1,8 +1,8 @@
 -- german_case.lua
--- librime-lua filter for the `deutsch` schema: while the context property
+-- librime-lua filter for the `deutsch` and `francais` schemas: while the context property
 -- "german_capital" is "1" (set by german_keys.lua when the input starts with
 -- an uppercase letter), the first letter of every candidate is capitalized:
--- "Ich" for ich, "Über" for über. Comments are kept, so this filter goes
+-- "Ich" for ich, "Über" for über, "École" for école. Comments are kept, so this filter goes
 -- after german_gloss, which looks the word up as the dictionary spells it.
 --
 -- Usage in a schema, after lua_filter@*german_gloss:
@@ -10,7 +10,12 @@
 
 local M = {}
 
-local UPPER = { ["ä"] = "Ä", ["ö"] = "Ö", ["ü"] = "Ü", ["é"] = "É" }
+-- string.upper only knows ASCII; the letters of German and French words.
+local UPPER = {
+  ["ä"] = "Ä", ["ö"] = "Ö", ["ü"] = "Ü", ["à"] = "À", ["â"] = "Â", ["æ"] = "Æ",
+  ["ç"] = "Ç", ["é"] = "É", ["è"] = "È", ["ê"] = "Ê", ["ë"] = "Ë", ["î"] = "Î",
+  ["ï"] = "Ï", ["ô"] = "Ô", ["œ"] = "Œ", ["ù"] = "Ù", ["û"] = "Û", ["ÿ"] = "Ÿ",
+}
 
 -- `text` with its first letter in uppercase.
 function M.capitalize(text)

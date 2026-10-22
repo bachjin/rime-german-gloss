@@ -31,6 +31,9 @@ local function Engine(values)
   function ctx:get_property(k) return self.props[k] or "" end
   function ctx:set_property(k, v) self.props[k] = v end
   function ctx:get_option(k) return self.options[k] or false end
+  function ctx:get_selected_candidate()
+    return self.selected and { text = self.selected } or nil
+  end
   function ctx:push_input(s)
     self.input = self.input .. s
     self.update_notifier:emit(self)
@@ -176,14 +179,32 @@ keys.func(SPACE, env)
 engine.context:commit()
 check("no space after fini", #committed == 1)
 
--- 9. german_case.capitalize
+-- 9. No space after an elided word (French j', qu')
+local e4, committed4 = Engine()
+local env4 = { engine = e4, name_space = "*german_keys" }
+keys.init(env4)
+e4.context:push_input("j'")
+e4.context.selected = "j'"
+keys.func(SPACE, env4)
+e4.context:commit()
+check("no space after j'", table.concat(committed4, "|") == "j'")
+e4.context:push_input("ai")
+e4.context.selected = "ai"
+keys.func(SPACE, env4)
+e4.context:commit()
+check("space after the next word", table.concat(committed4, "|") == "j'|ai| ")
+
+-- 10. german_case.capitalize
 check("ascii", case.capitalize("ich") == "Ich")
 check("umlaut", case.capitalize("über") == "Über")
 check("already capital", case.capitalize("Haus") == "Haus")
 check("empty", case.capitalize("") == "")
 check("rest untouched", case.capitalize("äöü") == "Äöü")
+check("French accent", case.capitalize("école") == "École")
+check("French ligature", case.capitalize("œuvre") == "Œuvre")
+check("elided", case.capitalize("j'") == "J'")
 
--- 10. german_case filter
+-- 11. german_case filter
 local e3 = Engine()
 local cenv = { engine = e3 }
 local plain = filter(case, cenv, { Candidate("essen", " 吃"), Candidate("Essen", " 食物") })

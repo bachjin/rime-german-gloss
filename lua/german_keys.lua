@@ -1,11 +1,12 @@
 -- german_keys.lua
--- librime-lua processor for the `deutsch` schema, whose codes are lowercase
--- ASCII (Straße -> strasse). It does two things:
+-- librime-lua processor for the `deutsch` and `francais` schemas, whose codes
+-- are lowercase ASCII (Straße -> strasse, élève -> eleve). It does two things:
 --
 -- 1. Space after a word: when Space commits a candidate, a space is committed
 --    after it, so words typed one after another come out separated ("Haus"
 --    Space "ist" Space gives "Haus ist "). Other ways of committing (digits,
---    Enter, punctuation) add nothing, so "haus," still gives "Haus,".
+--    Enter, punctuation) add nothing, so "haus," still gives "Haus,". Nor
+--    does a word ending in an apostrophe: "j'" Space "ai" gives "j'ai ".
 -- 2. Capitals: an uppercase letter typed first (Shift+I) is entered as its
 --    lowercase code, and the context property "german_capital" is set to "1"
 --    until the input is cleared; german_case.lua then capitalizes the
@@ -48,6 +49,11 @@ function M.init(env)
   end)
 end
 
+-- Whether `cand` ends in an apostrophe (French j', qu'): no space follows it.
+function M.elided(cand)
+  return cand ~= nil and cand.text:sub(-1) == "'"
+end
+
 function M.func(key, env)
   if key:release() or key:ctrl() or key:alt() or key:super() then
     return kNoop
@@ -65,7 +71,7 @@ function M.func(key, env)
     return kAccepted
   end
   env.keys_space_pending = env.keys_auto_space and key:repr() == "space"
-      and context:is_composing()
+      and context:is_composing() and not M.elided(context:get_selected_candidate())
   -- Leave the key to selector / editor, which do the actual commit.
   return kNoop
 end

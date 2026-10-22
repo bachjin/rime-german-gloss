@@ -7,7 +7,9 @@
 | [德语/法语/日语释义](#德语法语日语释义) | 在中文候选的注释里追加离线词典的德语、法语或日语释义，Ctrl+`` ` `` 选单里切换语言，任何方案可用 | `install-gloss.py` |
 | [仓颉增强](#仓颉增强) | `cangjie5`：分号分隔全码输入；重码首选按仓颉次序而不是字频；`` ` `` 反查改用小鹤双拼 | `install-cangjie.py` |
 | [粤拼（TypeDuck）](#粤拼typeduck) | 在原版 librime 上安装 TypeDuck 的 `jyut6ping3` 方案；候选词显示带声调的粤拼和英语等释义 | `install-jyutping.py` |
-| [德语输入](#德语输入) | 新方案 `deutsch`：用 ASCII 打德语（`muede` 出 müde），候选显示中文释义 | `install-german.py` |
+| [德语输入](#德语输入) | 新方案 `deutsch`：用 ASCII 打德语（`muede` 出 müde），候选显示中文释义 | `install-input.py` |
+| [法语输入](#法语输入) | 新方案 `francais`：打不带重音的拼写（`eleve` 出 élève），候选显示中文释义 | `install-input.py` |
+| [日语方案的中文释义](#日语方案的中文释义) | 给已有的日语方案 `japanese`（rime-japanese）的候选加中文释义 | `install-input.py` |
 
 仓库名 `rime-german-gloss` 来自最早的那个定制。
 
@@ -31,9 +33,13 @@ lua/typeduck_gloss.lua        粤拼：释义过滤器模块（安装到 <用户
 install-jyutping.py           粤拼：安装 TypeDuck 方案、改写配置，并生成释义索引
 german_input/deutsch.schema.yaml  德语输入：方案文件
 tools/build_dewiktionary.py   德语输入：生成词库 deutsch.dict.yaml 和释义 de_zh.tsv（不纳入版本库）
-lua/german_keys.lua           德语输入：空格上屏后补空格；大写字母开头
-lua/german_case.lua           德语输入：大写开头时把候选首字母大写
-install-german.py             德语输入：安装脚本
+french_input/francais.schema.yaml  法语输入：方案文件
+tools/build_frwiktionary.py   法语输入：生成词库 francais.dict.yaml 和释义 fr_zh.tsv（不纳入版本库）
+lua/german_keys.lua           德语/法语输入：空格上屏后补空格；大写字母开头
+lua/german_case.lua           德语/法语输入：大写开头时把候选首字母大写
+lua/japanese_kana.lua         日语方案：F6/F7/F8 把输入转成平假名/片假名/半角片假名上屏
+tools/build_ja_zh.py          日语方案的中文释义：生成 japanese_input/ja_zh.tsv（不纳入版本库）
+install-input.py              德语输入、法语输入、日语方案的中文释义：安装脚本
 tests/                        各部分的离线单元测试
 ```
 
@@ -289,16 +295,16 @@ python3 tools/build_dewiktionary.py --source de-wiktextract.jsonl.gz --zh-source
 ### 安装（德语输入）
 
 ```sh
-python3 install-german.py        # Windows 上命令是 python
+python3 install-input.py --language de     # Windows 上命令是 python；不加 --language 时装 de,fr,ja
 ```
 
-把方案、词库、释义和三个 Lua 文件装到所有已存在的用户目录（目录检测与 `install-cangjie.py` 相同，`--dir DIR` 指定）。词库和释义取自 `german_input/`（`--built DIR` 指定），没有时提示先运行生成脚本。用户目录里已有不是本仓库生成的同名方案、词库或释义文件时不覆盖，除非加 `--force`；Lua 文件总是覆盖。之后在 `default.custom.yaml` 的 `schema_list` 里加上 `- schema: deutsch`（脚本不改这个文件，只提示），再[重新部署](#重新部署)。
+把方案、词库、释义和三个 Lua 文件装到所有已存在的用户目录（目录检测与 `install-cangjie.py` 相同，`--dir DIR` 指定）。词库和释义取自 `german_input/`（`--built DIR` 指定放 `german_input/` 等目录的上级目录），没有时提示先运行生成脚本。用户目录里已有不是本仓库生成的同名方案、词库或释义文件时不覆盖，除非加 `--force`；Lua 文件总是覆盖。之后在 `default.custom.yaml` 的 `schema_list` 里加上 `- schema: deutsch`（脚本不改这个文件，只提示），再[重新部署](#重新部署)。`install-input.py` 以前叫 `install-german.py`；旧脚本装的文件照样认作本仓库生成的。
 
 ### 测试（德语输入）
 
 ```sh
 python3 tests/test_build_dewiktionary.py
-python3 tests/test_install_german.py
+python3 tests/test_install_input.py
 lua tests/test_german_keys.lua
 ```
 
@@ -310,6 +316,145 @@ lua tests/test_german_keys.lua
 - 语法信息只取第一个词条：同形不同性的名词（der/die See）合成 `der/die`，但两个词条的中文不分开。
 - 输入码只有小写字母，大写只看第一个字母；全大写缩写按词典的写法出。
 - 复合词不拆分：词典里没有的长复合词没有释义。
+
+## 法语输入
+
+方案 `francais`（法语）：和[德语输入](#德语输入)一样，按不带重音的拼写输入，候选是法语词，注释是词性、语法信息和中文释义。
+
+```
+cheval      →  1. cheval       n.m. · 复数 chevaux · 马; 骑术; 马肉
+beau        →  1. beau         adj. · belle, beaux · 美丽的，漂亮的，好看的，优美的; …
+aller       →  1. aller        v. · 去，走; （车辆、船只等）行驶，航行; 通向，伸展
+allais      →  1. allais       aller 的未完成过去时 · 去，走
+eleve       →  1. élevé        adj. · 高的; … / élever 的过去分词 · 抚养，养育
+               2. élève        n.m./n.f. · 学童; 学生 / élever 的现在时 · 抚养，养育
+ete         →  1. été          n.m. · 夏天，夏季; 暑期 / être 的过去分词 · 存在
+suis        →  1. suis         être 的现在时 · 存在 / suivre 的现在时 · 跟从
+aujourdhui  →  1. aujourd'hui  adv. · 今天，在今天; 当今，如今，当下; 今日
+j'          →  1. j'           je 的省音形式 · 第一人称、主语、我
+j'␣ai␣      →  j'ai␣
+⇧ecole␣     →  École␣
+```
+
+注释的格式：
+
+| 词 | 注释 |
+|---|---|
+| 名词 | `n.m.`／`n.f.`（两种性写作 `n.m./n.f.`），复数不是“原形 + s”时写 `复数 …`，中文 |
+| 形容词 | `adj.`；阴性不是“原形 + e”或阳性复数不是“原形 + s”时写出来（`belle, beaux`） |
+| 其他 | `v.` `adv.` `prép.` `conj.` `pron.` `art.` `dét.` `num.` `interj.` |
+| 变形 | `原形 的复数`／`阴性`／`现在时`／`未完成过去时`／`简单过去时`／`简单将来时`／`条件式`／`虚拟式`／`命令式`／`过去分词`／`省音形式`…，再加原形的第一个中文义项；本身也是独立词条的（été）先写自己的释义，再用 ` / ` 接一个原形 |
+
+- **重音**：é è ê à ç 等都打不带符号的字母，œ 打 `oe`，æ 打 `ae`。同码的词按词频排（`ou` 先出 où 再出 ou）。
+- **撇号和连字符**：撇号是编码的一部分，`j'`、`qu'`、`aujourd'hui` 照打；带撇号的长词也可以不打撇号（`aujourdhui`）。连字符不打（`peutetre` 出 peut-être）。以撇号结尾的词（j' l' d' qu' …）用空格上屏后不补空格，所以 `j'` 空格 `ai` 空格得到 `j'ai `。
+- **大写**：Shift + 字母开头时候选首字母大写，带重音的字母也能大写（École、Œuvre）。专名、缩写这类大写词，有中文时才收（Paris 收，地名 Maisons、缩写 ETE 不收），免得排在 maison、été 的补全前面。
+- 空格、补全、学习、回车、标点、快捷键与德语输入相同（同一组 Lua 文件 `german_keys.lua`、`german_case.lua`）。释义过滤器按名空间 `fr_zh` 配置：完整词典 `french_input/fr_zh.tsv`，用户词典 `french_input/fr_zh.user.tsv`。
+
+### 词库（法语输入）
+
+```sh
+python3 tools/build_frwiktionary.py      # 下载四个来源（约 1 GB），生成 french_input/ 下两个文件，约三分钟
+python3 tools/build_frwiktionary.py --source fr-wiktextract.jsonl.gz --zh-source zh-wiktextract.jsonl.gz \
+    --cfdict cfdict.u8 --frequency fr_50k.txt --essay <Weasel>/data/essay.txt   # 用已下载的文件
+```
+
+| 来源 | 用途 | 许可 |
+|---|---|---|
+| [法语维基词典](https://fr.wiktionary.org/)（[kaikki.org](https://kaikki.org/frwiktionary/rawdata.html)，约 740 MB） | 词表、性、复数、阴性、变位变形及其原形、部分中文翻译 | CC BY-SA |
+| [中文维基词典](https://zh.wiktionary.org/)（[kaikki.org](https://kaikki.org/zhwiktionary/rawdata.html)） | 约 3 万个法语词的中文释义，优先使用 | CC BY-SA |
+| [CFDICT](https://chine.in/mandarin/dictionnaire/CFDICT/) 反查 | 两个维基词典都没有中文的词 | CC BY-SA 3.0 |
+| [FrequencyWords](https://github.com/hermitdave/FrequencyWords) `fr_50k.txt` | 词频排序 | CC BY-SA 4.0 |
+| Rime 的 `essay.txt`（可选） | CFDICT 反查时给中文词排序 | LGPL |
+
+- 中文的取法与德语相同。中文维基词典的法语释义多半照印刷词典录入，一条里用“；”列几个义项，还夹着 `n.m.` `adj.` 这样的词性：按“；”和词性拆成义项，去掉 `pl. ~aux …` 这类复数说明。
+- 变形的种类按法语维基词典 form-of 义项的法语说明判断（“…de l’indicatif imparfait du verbe aller”）。省音形式（j' qu' l'）的 form-of 指向的是词性名（conjonction），原形改从说明里 “devant” 前的词取。
+- 收词：有中文或有词性信息的原形；变形只收原形有中文的或词频表里有的。`francais.dict.yaml` 约 51 万行（14 MB），`fr_zh.tsv` 约 50 万条（21 MB）。
+- `--no-forms` 不收变位变格形式。生成的两个文件受 CC BY-SA 约束。
+
+### 安装（法语输入）
+
+```sh
+python3 install-input.py --language fr
+```
+
+与[德语输入](#安装德语输入)相同，装 `francais.schema.yaml`、`francais.dict.yaml`、`french_input/fr_zh.tsv` 和三个 Lua 文件；之后在 `schema_list` 里加 `- schema: francais`，再[重新部署](#重新部署)。切换方案的快捷键照德语输入的写法，另建一个 `francais.custom.yaml`。
+
+### 测试（法语输入）
+
+```sh
+python3 tests/test_build_frwiktionary.py
+python3 tests/test_install_input.py
+lua tests/test_german_keys.lua
+```
+
+真实行为同样用 rime.dll 在临时用户目录里模拟按键验证过（上面的例子）。
+
+### 已知限制（法语输入）
+
+- 中文维基词典的法语释义有的很简略或带格式残留；CFDICT 反查偶尔给出不相干的字（大写词 Cheval 的“午”来自生肖）。
+- 同形的形容词和名词只取第一个词条的语法信息（belle 先出名词“美丽的女人”，再接 beau 的阴性）。
+- 只有小写字母和撇号可以输入；词组（pomme de terre）不收，分词打。
+
+## 日语方案的中文释义
+
+给已有的日语方案 `japanese`（[rime-japanese](https://github.com/gkovacs/rime-japanese)，不在本仓库里）的候选加中文释义，用的是同一个过滤器 `german_gloss.lua`，名空间 `ja_zh`。
+
+```
+gakkou    →  学校      名 · 学校
+shigoto   →  仕事      名 · 工作，职业; 任务; 功
+taberu    →  食べる    动 · 吃; 维持生计，过日子; 吃喝，饮食
+             たべる    食べる · 动 · 吃; …
+kirei     →  きれい    綺麗 · 形 · 美丽，漂亮; 清澈，乾净，纯粹; …
+             キレイ    形 · 美丽，漂亮; …
+arigatou  →  ありがとう  叹 · 表达感激的用语；谢谢
+hashi     →  箸        名 · 筷子
+             橋        桥
+```
+
+- 释义取自中文维基词典的日语词条（约 6 万词），前 3 个义项，前面是词性（名 动 形 形动 副 代 叹…）；专名的释义排在最后。从印刷词典导入的词条（“突破【とっぱ】↵名·他サ 突破，冲破。↵例句…”）只取释义行，保留它自己的词性标记。
+- 假名的重定向页（きれい → 綺麗）、词条列出的其他写法（キレイ、有難う）和部分活用形（`食べた` → `食べる 的过去式`；过去式、ます形、否定形、被动形、使役形）指向同一释义。中文维基词典没有的词用日语维基词典的中文翻译。
+- 繁体字转简体：从中文维基词典里同时给出繁简两种写法的中文词条学一张单字对照表，至少两个词条支持的才转（避免“清澈”被一条错误的对照转成“清彻”）。日语用字（乾、職）有对照的也会转。
+
+### 生成和安装
+
+```sh
+python3 tools/build_ja_zh.py        # 下载中文、日语维基词典（约 300 MB），生成 japanese_input/ja_zh.tsv（约 15 万条，7 MB）
+python3 install-input.py --language ja
+```
+
+安装释义文件、用户词典 `japanese_input/ja_zh.user.tsv`、`german_gloss.lua` 和 `japanese_kana.lua`（见下面的[假名键](#假名键f6f7f8)），再给 `japanese.custom.yaml` 加上：
+
+```yaml
+patch:
+  engine/filters/+: [lua_filter@*german_gloss@ja_zh]
+  engine/processors/@before 0: lua_processor@*japanese_kana
+  ja_zh/dictionary: japanese_input/ja_zh.user.tsv
+  ja_zh/base_dictionary: japanese_input/ja_zh.tsv
+  ja_zh/opencc_config: none
+```
+
+`japanese.custom.yaml` 不存在或是本仓库生成的，脚本直接写；已有手写的，只打印这几行。用户目录里没有 `japanese.schema.yaml` 时提示先装日语方案。`opencc_config: none`：词典的键是日语，不做繁简转换。
+
+```sh
+python3 tests/test_build_ja_zh.py
+python3 tests/test_install_input.py
+lua tests/test_japanese_kana.lua
+```
+
+### 假名键（F6/F7/F8）
+
+和微软日语输入法一样，输入时按 F6 把输入转成平假名，F7 转成片假名，F8 转成半角片假名，直接上屏：
+
+```
+gakkou F6          →  がっこう
+gakkou F7          →  ガッコウ
+konpyu-ta- F8      →  ｺﾝﾋﾟｭｰﾀｰ
+watashigakusei，先选“私”，再按 F7  →  私ガクセイ
+```
+
+- 由 `lua/japanese_kana.lua`（processor）完成，用自带的罗马字表转换，不查词库，所以整句和词库里没有的词也能转。已经选好的前几段照选好的字上屏，只转剩下的输入。
+- 罗马字：平文式和训令式都行（shi/si、chi/ti、tsu/tu、fu/hu、ja/zya）；双写辅音是 っ（kk、tch）；n 在辅音前或词尾是 ん，元音前要写 nn 或 n'（kin'en）；x、l、`_` 加元音是小写假名（xa ぁ、xtsu っ）；`-`（方案里也可以打 `q`）是长音 ー。
+- 微软输入法按 F6 后还能接着编辑，这里是直接上屏。反查（`` ` `` 开头的拼音）时不处理。
 
 ## 德语/法语/日语释义
 
