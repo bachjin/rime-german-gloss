@@ -231,6 +231,49 @@ gloss.init(env11)
 check("missing base dict silent", #warnings == nwarn and next(env11.gloss_base) == nil)
 check("utf8 truncate", gloss.truncate("für Äpfel", 5) == "für Ä…" and gloss.truncate("kurz", 5) == "kurz")
 
+-- 8b. sorted dictionaries ("# sorted" header) are searched as one string
+local sorted_text = "# generated\n# sorted\n" ..
+  "Haus\tdas · 房子\nHause\tHaus 的变格\nHäuser\tHaus 的复数\nStraße\tdie · 路\n" ..
+  "essen\t动 · 吃\nfür\t介 · 为了\ngehen\t动 · 走\r\nmüde\t形 · 累\nzu\t\n"
+local sd = gloss.sorted_dict(sorted_text)
+check("sorted: first", sd["Haus"] == "das · 房子")
+check("sorted: prefix is another key", sd["Hause"] == "Haus 的变格")
+check("sorted: non-ASCII", sd["Häuser"] == "Haus 的复数" and sd["für"] == "介 · 为了" and sd["müde"] == "形 · 累")
+check("sorted: CRLF stripped", sd["gehen"] == "动 · 走")
+check("sorted: middle", sd["essen"] == "动 · 吃" and sd["Straße"] == "die · 路")
+check("sorted: misses", sd["Hau"] == nil and sd["haus"] == nil and sd["zzz"] == nil
+  and sd["A"] == nil and sd["Häus"] == nil and sd[""] == nil and sd["a\tb"] == nil)
+check("sorted: empty gloss is a miss", sd["zu"] == nil)
+check("sorted: header is not a key", sd["# sorted"] == nil and sd["# generated"] == nil)
+check("sorted: single line", gloss.sorted_dict("a\tx")["a"] == "x" and gloss.sorted_dict("a\tx")["b"] == nil)
+check("sorted: empty", gloss.sorted_dict("# sorted\n")["a"] == nil)
+local all_found = true
+for line in sorted_text:gmatch("([^\n]+)\n") do
+  local k, v = line:match("^([^#\t][^\t]*)\t(.+)$")
+  if k and sd[k] ~= (v:gsub("\r$", "")) then all_found = false end
+end
+check("sorted: every key found", all_found)
+
+gloss.clear_cache()
+local tmp5 = os.tmpname()
+f = assert(io.open(tmp5, "wb"))
+f:write("\239\187\191" .. sorted_text)
+f:close()
+local loaded = gloss.load(tmp5)
+check("load: marker gives a sorted dict", getmetatable(loaded) ~= nil and loaded["müde"] == "形 · 累")
+local env12 = mock_env(nil, "*german_gloss@de_zh", { base_dictionary = tmp5, opencc_config = "none" })
+gloss.init(env12)
+local out12 = run_filter(gloss, env12, { Candidate("Phrase", "Häuser", ""), Candidate("Phrase", "xyz", "") })
+check("filter with sorted base", out12[1].comment == " Haus 的复数" and out12[2].comment == "")
+os.remove(tmp5)
+local tmp6 = os.tmpname()
+f = assert(io.open(tmp6, "wb"))
+f:write("# not sorted\nb\tB\na\tA\n")
+f:close()
+local unsorted = gloss.load(tmp6)
+check("load: no marker gives a table", getmetatable(unsorted) == nil and unsorted.a == "A" and unsorted.b == "B")
+os.remove(tmp6)
+
 -- 9. split input: the word formed with the preceding segments comes first
 gloss.clear_cache()
 local tmp4 = os.tmpname()
@@ -292,6 +335,75 @@ gloss.init(env12)
 env12.gloss_conv = { convert = function() error("boom") end }
 check("lookup error passthrough",
   run_filter(gloss, env12, { Candidate("Phrase", "學", "x") })[1].comment == "x")
+
+-- 10. `option`: a radio switch picks the language; a filter whose option is
+--     off passes candidates through and has not loaded its dictionaries yet
+gloss.clear_cache()
+local options = {}
+local SWITCHES = {
+  { "ascii_mode" },
+  { "gloss_de", "gloss_fr", "gloss_none" },
+}
+local function option_env(name_space, extra)
+  local e = mock_env(nil, name_space, extra)
+  local config = e.engine.schema.config
+  local get_string = config.get_string
+  config.get_list_size = function(_, path)
+    if path == "switches" then return #SWITCHES end
+    local i = path:match("^switches/@(%d+)/options$")
+    return i and #SWITCHES[tonumber(i) + 1] or 0
+  end
+  config.get_string = function(self, key)
+    local i, j = key:match("^switches/@(%d+)/options/@(%d+)$")
+    if i then return SWITCHES[tonumber(i) + 1][tonumber(j) + 1] end
+    return get_string(self, key)
+  end
+  e.engine.context = { get_option = function(_, name) return options[name] == true end }
+  return e
+end
+local de = option_env("*german_gloss", { option = "gloss_de" })
+local fr = option_env("french_gloss", { option = "gloss_fr", dictionary = "french_gloss/zh_fr.tsv" })
+gloss.init(de)
+gloss.init(fr)
+check("option: not loaded at init", de.gloss_dict == nil and fr.gloss_dict == nil)
+check("option: radio group found", de.gloss_group and #de.gloss_group == 3)
+local both = function(cands)
+  return run_filter(gloss, fr, run_filter(gloss, de, cands))
+end
+-- nothing picked yet: the group's first option (German) counts as on
+check("option: first by default", both({ Candidate("Phrase", "学校", "") })[1].comment == " die Schule")
+check("option: French still not loaded", de.gloss_dict ~= nil and fr.gloss_dict == nil)
+options.gloss_de = true
+check("option: German on", both({ Candidate("Phrase", "学校", "") })[1].comment == " die Schule")
+options = { gloss_fr = true }
+check("option: French on", both({ Candidate("Phrase", "学校", "") })[1].comment == " l'école")
+options = { gloss_none = true }
+local none = both({ Candidate("Phrase", "学校", "~x") })
+check("option: none", none[1].comment == "~x" and #none == 1)
+local nocontext = mock_env(nil, nil, { option = "gloss_de" })
+gloss.init(nocontext)
+check("option: no context passes through",
+  run_filter(gloss, nocontext, { Candidate("Phrase", "学校", "") })[1].comment == "")
+
+-- 11. `wrap` / `max_lines`: long glosses break into lines at "; " etc.
+check("width: ASCII, CJK, kana, full-width, ellipsis",
+  gloss.width("ab") == 2 and gloss.width("学校") == 4 and gloss.width("がっこう") == 8
+    and gloss.width("（）") == 4 and gloss.width("…é") == 2)
+check("wrap off", gloss.wrap("a; b", 0) == "a; b" and gloss.wrap("a; b", nil) == "a; b")
+check("wrap short text unchanged", gloss.wrap("roi; prince", 20) == "roi; prince")
+check("wrap at separators", gloss.wrap("roi; prince; régner sur", 12) == "roi; prince;\nrégner sur")
+check("wrap CJK at 、", gloss.wrap("飛行機、航空機、ジェット機", 16) == "飛行機、航空機、\nジェット機")
+check("wrap cuts a long piece by character",
+  gloss.wrap("中国人の姓のひとつ", 8) == "中国人の\n姓のひと\nつ")
+check("wrap first line starts after the comment", gloss.wrap("roi; prince", 10, 0, 5) == "roi;\nprince")
+check("max_lines", gloss.wrap("a; b; c; d", 3, 2) == "a;\nb…")
+check("max_lines not reached", gloss.wrap("a; b", 3, 5) == "a;\nb")
+local wrapped = mock_env(nil, nil, { wrap = "10", max_lines = "2" })
+gloss.init(wrapped)
+local wout = run_filter(gloss, wrapped, {
+  Candidate("Phrase", "学校", ""), Candidate("Phrase", "工作", "〔x〕") })
+check("wrap in filter", wout[1].comment == " die\nSchule")
+check("wrap in filter after a comment", wout[2].comment == "〔x〕 die\nArbeit")
 
 print(string.format("%d/%d checks passed", total - failures, total))
 os.exit(failures == 0 and 0 or 1)

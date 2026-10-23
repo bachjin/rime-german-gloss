@@ -1,2 +1,9 @@
 german_gloss/handedict.tsv
 __pycache__/
+german_input/deutsch.dict.yaml
+german_input/de_zh.tsv
+french_gloss/cfdict.tsv
+japanese_gloss/jawiktionary.tsv
+french_input/francais.dict.yaml
+french_input/fr_zh.tsv
+japanese_input/ja_zh.tsv
